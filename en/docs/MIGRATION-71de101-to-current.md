@@ -876,7 +876,7 @@ They break muscle memory, not files:
 - **`corp-plan` and `corp-spec` now commit by path.** `git add <path>`; never
   `git add -A`, `git add .` or `git commit -a`.
 - **`corp-test-plan` is a rewrite** (11 → 71 lines) and is now black-box: the request
-  or Kafka event to send, the expected response, and the expected database rows on the
+  or asynchronous message to send, the expected response, and the expected database rows on the
   dev stand — posted as a comment on the same ticket, never as a separate test task.
 - **`index-all.sh` moved its default Zoekt index directory** to
   `${CORP_ZOEKT_INDEX_DIR:-$STORE_ROOT/.cache/zoekt/index}`. Re-point any cron or CI
@@ -1257,7 +1257,7 @@ be resolved on the target machine before or during the run — do not invent the
    the project note's recorded diff summary (`projects/active/corp-sdd-transition.md`,
    2026-08-25 entry: 21 breaking / 14 additive / 9 neutral across 25 files), not from a
    direct read here. Re-diff them before relying on any detail beyond what 8.4 states.
-9. **The exact CI system.** `docs/SETUP.md` §7 ships a Groovy/Jenkins template and marks
+9. **The exact CI system.** `docs/SETUP.md` §7 ships a CI pipeline template and marks
    it TEMPLATE. Adapt and smoke-test it; this runbook does not migrate CI.
 10. **The kit edition moves fast.** During the writing of this runbook `VERSION` read
     `2026-08-25.13`, then `2026-08-25.14` minutes later; it was last re-checked against

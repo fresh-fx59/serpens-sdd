@@ -1,6 +1,6 @@
 # Задача установки для агента
 
-Выполните эти этапы после получения или обновления `corp-sdd`. Останавливайтесь
+Выполните эти этапы после получения или обновления `serpens-sdd`. Останавливайтесь
 при любой ошибке. Сохраняйте команды и вывод в отчёте проекта. Во время установки
 не удаляйте и не переписывайте существующие репозитории, ветки и локальную работу.
 
@@ -25,25 +25,28 @@ CLI OpenSpec закреплён и внутренний. Пакет называ
 npx @fission-ai/openspec@<закреплённая-версия> --version
 ```
 
+`@fresh-fx59/serpens-sdd` установлен, и `serpens-sdd version` печатает редакцию `2026-09-10.1`.
+Node >= 18. Ни один шаг этой процедуры не копирует скрипт в репозиторий.
+
 В закрытой сети берите пакет из разрешённого внутреннего зеркала и укажите в отчёте,
 какой реестр был использован.
 
 Получите `<project-id>`, название корпоративного порта агента, закреплённую версию
 OpenSpec, URL и согласованную базовую ветку системного хранилища, доступ к forge.
-В корне `corp-sdd` выполните:
+В корне `serpens-sdd` выполните:
 
 ```bash
-export CORP_SDD_ROOT="$(git rev-parse --show-toplevel)"
-export CORP_WORKSPACE_ROOT="$(cd "$CORP_SDD_ROOT/.." && pwd -P)"
-export CORP_SYSTEM_STORE_ROOT="${CORP_SYSTEM_STORE_ROOT:-$CORP_WORKSPACE_ROOT/system-store}"
-test -d "$CORP_SDD_ROOT/system-store-template"
-test "$CORP_SYSTEM_STORE_ROOT" != "$CORP_SDD_ROOT"
+export SERPENS_SDD_ROOT="$(git rev-parse --show-toplevel)"
+export SERPENS_WORKSPACE_ROOT="$(cd "$SERPENS_SDD_ROOT/.." && pwd -P)"
+export SERPENS_SYSTEM_STORE_ROOT="${SERPENS_SYSTEM_STORE_ROOT:-$SERPENS_WORKSPACE_ROOT/system-store}"
+test -d "$SERPENS_SDD_ROOT/system-store-template"
+test "$SERPENS_SYSTEM_STORE_ROOT" != "$SERPENS_SDD_ROOT"
 ```
 
 Переменные заменяют пути конкретной машины. `system-store` должен находиться
-рядом с `corp-sdd`, а не внутри него.
+рядом с `serpens-sdd`, а не внутри него.
 
-`index-all.sh` дополнительно требует **Universal Ctags** (`ctags --version` должен печатать
+`<serpens-sdd> index-code` дополнительно требует **Universal Ctags** (`ctags --version` должен печатать
 `Universal Ctags`; BSD ctags отвергается по бренду специально — на нём поиск `sym:` умирает
 молча) и индексатор Zoekt. И то и другое опционально: без поиска по коду остальной набор
 работает.
@@ -96,11 +99,11 @@ test "$CORP_SYSTEM_STORE_ROOT" != "$CORP_SDD_ROOT"
 прозой:
 
 ```bash
-git -C "$REPO" config corp.agentDir "<найденный каталог агента, напр. .acme>"
+git -C "$REPO" config serpens.agentDir "<найденный каталог агента, напр. .acme>"
 ```
 
-`corp-lint.mjs` определяет домашний каталог агента в таком порядке: `CORP_AGENT_DIR`, затем
-`git config corp.agentDir`, затем единственный dot-каталог в корне репозитория, внутри которого
+`<serpens-sdd> lint` определяет домашний каталог агента в таком порядке: `SERPENS_AGENT_DIR`, затем
+`git config serpens.agentDir`, затем единственный dot-каталог в корне репозитория, внутри которого
 есть подкаталог `skills/`. Если их больше одного — он выходит с кодом 1, а не угадывает. Файл
 проектных инструкций порта — аналог `AGENTS.md`, как бы порт его ни называл — настраивать не
 нужно: линт берёт любой `.md` в корне, имя которого записано ЗАГЛАВНЫМИ, кроме обычных
@@ -122,12 +125,12 @@ Slash-команды различаются от версии и профиля:
 шесть вызовов, которые использует процесс:
 
 ```bash
-<openspec> new change corp-probe
-<openspec> status --change corp-probe --json
-<openspec> instructions proposal --change corp-probe --json
-<openspec> instructions specs --change corp-probe --json
-<openspec> instructions apply --change corp-probe --json
-<openspec> validate corp-probe --type change --strict --json
+<openspec> new change spns-probe
+<openspec> status --change spns-probe --json
+<openspec> instructions proposal --change spns-probe --json
+<openspec> instructions specs --change spns-probe --json
+<openspec> instructions apply --change spns-probe --json
+<openspec> validate spns-probe --type change --strict --json
 <openspec> archive --help
 <openspec> store --help
 <openspec> show --help
@@ -145,7 +148,7 @@ Slash-команды различаются от версии и профиля:
 в `port-facts.md`.
 
 Внешний Superpowers не требуется. Используйте самостоятельные файлы
-`skills/corp-*`. Если порт не поддерживает навыки, вставьте тело каждого нужного
+`skills/spns-*`. Если порт не поддерживает навыки, вставьте тело каждого нужного
 навыка в установленную команду и удалите строку `Follow skill ...`.
 
 ## 3. Создайте или проверьте соседнее системное хранилище
@@ -161,10 +164,10 @@ git ls-remote --heads "<system-store-remote-url>" "<system-store-base-branch>"
 следующий разработчик. Клонируйте, ничего не создавайте:
 
 ```bash
-test ! -e "$CORP_SYSTEM_STORE_ROOT"
-git clone --branch "<system-store-base-branch>" --single-branch "<system-store-remote-url>" "$CORP_SYSTEM_STORE_ROOT"
-bash "$CORP_SDD_ROOT/scripts/tools/repository-state.sh" prepare-base --repo "$CORP_SYSTEM_STORE_ROOT" --base "<system-store-base-branch>"
-git -C "$CORP_SYSTEM_STORE_ROOT" config corp.baseBranch "<system-store-base-branch>"
+test ! -e "$SERPENS_SYSTEM_STORE_ROOT"
+git clone --branch "<system-store-base-branch>" --single-branch "<system-store-remote-url>" "$SERPENS_SYSTEM_STORE_ROOT"
+<serpens-sdd> state prepare-base --repo "$SERPENS_SYSTEM_STORE_ROOT" --base "<system-store-base-branch>"
+git -C "$SERPENS_SYSTEM_STORE_ROOT" config serpens.baseBranch "<system-store-base-branch>"
 ```
 
 Путь с шаблоном здесь создал бы через `git init` вторую, не связанную историю против
@@ -175,11 +178,11 @@ git -C "$CORP_SYSTEM_STORE_ROOT" config corp.baseBranch "<system-store-base-bran
 первая установка вообще) — начните с поставляемого шаблона:
 
 ```bash
-test ! -e "$CORP_SYSTEM_STORE_ROOT"
-cp -R "$CORP_SDD_ROOT/system-store-template" "$CORP_SYSTEM_STORE_ROOT"
-git -C "$CORP_SYSTEM_STORE_ROOT" init -b "<system-store-base-branch>"
-git -C "$CORP_SYSTEM_STORE_ROOT" remote add origin "<system-store-remote-url>"
-git -C "$CORP_SYSTEM_STORE_ROOT" config corp.baseBranch "<system-store-base-branch>"
+test ! -e "$SERPENS_SYSTEM_STORE_ROOT"
+cp -R "$SERPENS_SDD_ROOT/system-store-template" "$SERPENS_SYSTEM_STORE_ROOT"
+git -C "$SERPENS_SYSTEM_STORE_ROOT" init -b "<system-store-base-branch>"
+git -C "$SERPENS_SYSTEM_STORE_ROOT" remote add origin "<system-store-remote-url>"
+git -C "$SERPENS_SYSTEM_STORE_ROOT" config serpens.baseBranch "<system-store-base-branch>"
 ```
 
 **Хранилище уже есть на этой машине** — не копируйте и не клонируйте поверх.
@@ -187,10 +190,10 @@ git -C "$CORP_SYSTEM_STORE_ROOT" config corp.baseBranch "<system-store-base-bran
 изменения списка репозиториев и установленных файлов:
 
 ```bash
-test "$(git -C "$CORP_SYSTEM_STORE_ROOT" rev-parse --show-toplevel)" = "$CORP_SYSTEM_STORE_ROOT"
-git -C "$CORP_SYSTEM_STORE_ROOT" status --short --branch
-bash "$CORP_SDD_ROOT/scripts/tools/repository-state.sh" prepare-base --repo "$CORP_SYSTEM_STORE_ROOT" --base "<system-store-base-branch>"
-git -C "$CORP_SYSTEM_STORE_ROOT" config corp.baseBranch "<system-store-base-branch>"
+test "$(git -C "$SERPENS_SYSTEM_STORE_ROOT" rev-parse --show-toplevel)" = "$SERPENS_SYSTEM_STORE_ROOT"
+git -C "$SERPENS_SYSTEM_STORE_ROOT" status --short --branch
+<serpens-sdd> state prepare-base --repo "$SERPENS_SYSTEM_STORE_ROOT" --base "<system-store-base-branch>"
+git -C "$SERPENS_SYSTEM_STORE_ROOT" config serpens.baseBranch "<system-store-base-branch>"
 ```
 
 Проверка состояния отклоняет грязное дерево, detached HEAD, неотправленные коммиты
@@ -200,27 +203,21 @@ fast-forward. Про stash и коммиты на других локальны�
 `assert-archivable`.
 
 Сохраните результат этапа 1 как
-`$CORP_SYSTEM_STORE_ROOT/project-repositories.json`. Скопируйте текущие инструменты
-и шаблоны, не удаляя проектные файлы:
+`$SERPENS_SYSTEM_STORE_ROOT/project-repositories.json`. Запишите shim и скопируйте
+шаблоны, не удаляя проектные файлы:
 
 ```bash
-install -m 0755 "$CORP_SDD_ROOT/scripts/tools/sync-submodules.sh" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0755 "$CORP_SDD_ROOT/scripts/tools/repository-state.sh" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0755 "$CORP_SDD_ROOT/scripts/tools/index-all.sh" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0755 "$CORP_SDD_ROOT/scripts/tools/verify-docs.sh" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0755 "$CORP_SDD_ROOT/scripts/tools/check-git-naming.sh" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0644 "$CORP_SDD_ROOT/scripts/tools/aggregate-index.mjs" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0644 "$CORP_SDD_ROOT/scripts/tools/gen-index.mjs" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0644 "$CORP_SDD_ROOT/scripts/tools/corp-lint.mjs" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0644 "$CORP_SDD_ROOT/scripts/tools/check-contract-split-brain.mjs" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0755 "$CORP_SDD_ROOT/scripts/tools/check-openspec-root.sh" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0644 "$CORP_SDD_ROOT/templates/port-facts.md" "$CORP_SYSTEM_STORE_ROOT/port-facts.md"
-install -m 0644 "$CORP_SDD_ROOT/templates/conventions-branching.md" "$CORP_SYSTEM_STORE_ROOT/conventions/branching.md"
-mkdir -p "$CORP_SYSTEM_STORE_ROOT/templates"
-install -m 0644 "$CORP_SDD_ROOT/templates/store-contract.md"  "$CORP_SYSTEM_STORE_ROOT/templates/"
-install -m 0644 "$CORP_SDD_ROOT/templates/testing-stack.md"   "$CORP_SYSTEM_STORE_ROOT/templates/"
-install -m 0644 "$CORP_SDD_ROOT/templates/research.md"        "$CORP_SYSTEM_STORE_ROOT/templates/"
-install -m 0644 "$CORP_SDD_ROOT/templates/adr.md"             "$CORP_SYSTEM_STORE_ROOT/templates/"
+# Shim: один сгенерированный файл заменяет одиннадцать копий. `serpens-sdd init` пишет его на этом
+# этапе (вызов `writeShim()` в `stage3()`, src/stages/stage3-store.mjs — имя функции, а не номер
+# строки, чтобы ссылка не устарела). Если этапы выполняются вручную, доказательство:
+test -x "$SERPENS_SYSTEM_STORE_ROOT/tools/serpens-sdd" && "$SERPENS_SYSTEM_STORE_ROOT/tools/serpens-sdd" version
+install -m 0644 "$SERPENS_SDD_ROOT/templates/port-facts.md" "$SERPENS_SYSTEM_STORE_ROOT/port-facts.md"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/conventions-branching.md" "$SERPENS_SYSTEM_STORE_ROOT/conventions/branching.md"
+mkdir -p "$SERPENS_SYSTEM_STORE_ROOT/templates"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/store-contract.md"  "$SERPENS_SYSTEM_STORE_ROOT/templates/"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/testing-stack.md"   "$SERPENS_SYSTEM_STORE_ROOT/templates/"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/research.md"        "$SERPENS_SYSTEM_STORE_ROOT/templates/"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/adr.md"             "$SERPENS_SYSTEM_STORE_ROOT/templates/"
 ```
 
 Инициализируйте OpenSpec в хранилище закреплённым пакетом и портом из этапа 2.
@@ -236,11 +233,11 @@ install -m 0644 "$CORP_SDD_ROOT/templates/adr.md"             "$CORP_SYSTEM_STOR
 ## 4. Создайте подмодули репозиториев проекта
 
 ```bash
-bash "$CORP_SYSTEM_STORE_ROOT/tools/sync-submodules.sh" \
-  --inventory "$CORP_SYSTEM_STORE_ROOT/project-repositories.json" \
-  --store-root "$CORP_SYSTEM_STORE_ROOT"
-git -C "$CORP_SYSTEM_STORE_ROOT" submodule status
-git -C "$CORP_SYSTEM_STORE_ROOT" diff -- .gitmodules
+<serpens-sdd> sync-submodules \
+  --inventory "$SERPENS_SYSTEM_STORE_ROOT/project-repositories.json" \
+  --store-root "$SERPENS_SYSTEM_STORE_ROOT"
+git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule status
+git -C "$SERPENS_SYSTEM_STORE_ROOT" diff -- .gitmodules
 ```
 
 Синхронизация только добавляет и допускает повторный запуск. Она записывает базовые
@@ -252,25 +249,49 @@ git -C "$CORP_SYSTEM_STORE_ROOT" diff -- .gitmodules
 
 Для каждого пути из `.gitmodules`:
 
-1. запустите корневой `repository-state.sh prepare-base` и устраните каждую ошибку;
+1. запустите корневой `<serpens-sdd> state prepare-base` и устраните каждую ошибку;
 2. инициализируйте OpenSpec в этом репозитории закреплённым пакетом и портом;
-3. через `check-openspec-root.sh` докажите, что корень совпадает с подмодулем;
-4. скопируйте в `tools/`: `repository-state.sh`, `corp-lint.mjs`, `gen-index.mjs`,
-   `verify-docs.sh`, `check-openspec-root.sh`, `check-contract-split-brain.mjs`,
-   `check-git-naming.sh`, а в `templates/` этого репозитория — шаблоны, на которые
-   установленные команды ссылаются по пути: `adr.md` (corp-archive), `research.md`
+3. запустите `<serpens-sdd> openspec-root` и докажите, что корень совпадает с подмодулем;
+4. shim заменяет копии инструментов спицы: `serpens-sdd init` пишет его в этот подмодуль
+   (вызов `writeShim()` в `onboardOne()`, `src/stages/stage5-onboard.mjs`), никогда вручную. Доказательство то же, что для
+   хранилища: `test -x "$submodule/tools/serpens-sdd" && "$submodule/tools/serpens-sdd" version`.
+   Скопируйте в `templates/` этого репозитория только шаблоны, на которые установленные
+   команды ссылаются по пути: `adr.md` (spns-archive), `research.md`
    и `testing-stack.md`. Команда, называющая отсутствующий шаблон, — мёртвая инструкция;
-5. скопируйте `config/lefthook.yml.example` в `lefthook.yml`, установите lefthook
-   из разрешённого внутреннего источника и выполните `lefthook install`;
+5. скопируйте `config/lefthook.yml.example` в `lefthook.yml` **и подставьте токен в копии** —
+   в примере четыре буквальных токена `<serpens-sdd>`, а подстановка этапа 6 покрывает только
+   каталоги установленных команд и навыков, но не этот файл. `lefthook.yml`, в котором осталось
+   `run: <serpens-sdd> verify-docs`, ломает КАЖДЫЙ коммит в репозитории:
+
+   ```bash
+   shim='"$(git rev-parse --show-toplevel)"/tools/serpens-sdd'   # тот же вызов, что на этапе 6
+   sed "s|<serpens-sdd>|$shim|g" "$SERPENS_SDD_ROOT/config/lefthook.yml.example" > "$submodule/lefthook.yml"
+   grep -n '<serpens-sdd>' "$submodule/lefthook.yml" && exit 1 || true   # не должно найти ничего
+   ```
+
+   затем установите lefthook из разрешённого внутреннего источника и выполните `lefthook install`;
 6. создайте стабильный id в `openspec/repo.txt`, создайте каталог `openspec/adr/`
-   (с `.gitkeep`, чтобы он пережил clone: `corp-archive` пишет
+   (с `.gitkeep`, чтобы он пережил clone: `spns-archive` пишет
    `openspec/adr/NNNN-<slug>.md` и сам каталог не создаёт), сгенерируйте индекс и
-   запустите `verify-docs.sh` от корня;
+   запустите корневой `<serpens-sdd> verify-docs`;
 6a. скопируйте `templates/testing-stack.md` в `docs/testing-stack.md` этого репозитория и
-   заполните его вместе с командой: быстрый и медленный уровни, команда запуска каждого,
-   границы связывания, которые ловит только медленный уровень, и порядок границ при отладке.
-   `corp-tdd` и `corp-debugging` не называют собственных фреймворков — они читают этот файл,
-   поэтому пустой файл оставляет оба навыка без стека;
+   заполните его вместе с командой. ПЯТЬ обязательных разделов: быстрый и медленный уровни с
+   командой запуска каждого, границы связывания, которые ловит только медленный уровень,
+   порядок границ при отладке и `Ручной доступ для тестирования` — двенадцать слотов о том, что
+   тестировщик может отправить, положить, запросить и увидеть снаружи. `spns-tdd`,
+   `spns-debugging`, `spns-test-plan` и `spns-autotest` не называют собственных фреймворков,
+   транспортов, хранилищ и языков запросов — они читают этот файл, поэтому незаполненный файл
+   оставляет четыре команды без опоры. `<serpens-sdd> verify-docs` падает, пока какой-то раздел
+   отсутствует или какой-то слот не заполнен, и называет каждый из них. Там, где слот допускает
+   `none`, `none` — ПОЛНЫЙ ответ: «такой поверхности у этого репозитория нет», и это не то же
+   самое, что оставить слот пустым. Ответ, одинаковый для всего контура, должен лежать в ОДНОМ
+   документе: назовите его в слоте `estate-reference` и напишите `inherit` в каждом слоте,
+   который он покрывает, чтобы тридцать репозиториев не носили по копии, которая разъедется.
+   `inherit` принимается только пока `estate-reference` называет документ. Держите таблицу слотов
+   ровно в три колонки — четвёртая колонка положит ответ туда, где шлюз его не найдёт, поэтому
+   свои заметки пишите под таблицей. Не удаляйте комментарии `<!-- serpens:section ... -->`:
+   по ним gate находит раздел, чей заголовок вы переписали, и по ним более поздняя редакция
+   дописывает новый раздел, не тронув уже написанный ответ;
 6b. приведи `.gitignore` этого репозитория в порядок до первого запуска: вывод сборки, кеши
    языка (`__pycache__/`, `*.py[cod]`, `target/`, `build/`, `node_modules/`) и локальные
    настройки должны быть там. За основу возьми `system-store-template/.gitignore`.
@@ -284,8 +305,8 @@ git -C "$CORP_SYSTEM_STORE_ROOT" diff -- .gitmodules
      - <store-id>
    ```
 
-   Без этого блока не разрешается ни один из маршрутов получения — строк, которые `corp-spec`
-   пишет в каждую межрепозиторную delta, — а `check-contract-split-brain.mjs` завершается нулём,
+   Без этого блока не разрешается ни один из маршрутов получения — строк, которые `spns-spec`
+   пишет в каждую межрепозиторную delta, — а `<serpens-sdd> split-brain` завершается нулём,
    ничего не проверив: вставленная копия контракта пройдёт незамеченной.
 
    Объявляйте и remote, а не только id, если CLI это принимает:
@@ -323,7 +344,7 @@ git -C "$CORP_SYSTEM_STORE_ROOT" diff -- .gitmodules
 ```markdown
 ## ЖЁСТКОЕ ПРАВИЛО — самопроверка
 После создания или правки ЛЮБОГО файла в openspec/ или docs/ выполните:
-    bash "$(git rev-parse --show-toplevel)/tools/verify-docs.sh"
+    <serpens-sdd> verify-docs
 Исправьте каждый ✗ (в каждой ошибке есть подсказка) и повторяйте до зелёного
 результата ДО отчёта о готовности и до предложения коммита. Отклонённую запись
 исправляют, переписывая содержимое, — никогда ослаблением лимитов или удалением
@@ -332,22 +353,28 @@ git -C "$CORP_SYSTEM_STORE_ROOT" diff -- .gitmodules
 человека, не зацикливайтесь.
 ```
 
-Один скрипт держит границу для всех троих: агента после записи, человека на
+Одна команда держит границу для всех троих: агента после записи, человека на
 pre-commit через lefthook и CI как последнюю преграду.
 
-## 6. Установите Corp-команды и навыки
+## 6. Установите Serpens-команды и навыки
 
-Скопируйте `skills/corp-*` в проектный каталог навыков из этапа 2. Скопируйте
-`commands/corp-*.md` в найденный каталог команд. Меняйте только оболочку порта,
+Скопируйте `skills/spns-*` в проектный каталог навыков из этапа 2. Скопируйте
+`commands/spns-*.md` в найденный каталог команд. Меняйте только оболочку порта,
 frontmatter и токен `{{args}}`, если это требуется.
 
 Замените каждый токен `<openspec>` в установленных копиях подставленным вызовом из
-`port-facts.md`. `corp-spec` вызывает `new change` и `instructions` по артефактам,
-`corp-plan` — `instructions design` и `instructions tasks`, `corp-implement` —
-`instructions apply`, `corp-review` — `validate` и `status`, `corp-archive` — `archive`.
+`port-facts.md`, а каждый токен `<serpens-sdd>` — вызовом shim из этапа 3/5: буквально
+`"$(git rev-parse --show-toplevel)"/tools/serpens-sdd`, собственный закоммиченный shim репозитория.
+Это ровно та строка, которую этап 5 пишет в `lefthook.yml`, поэтому хуки и команды не могут
+расходиться. Это ЗНАЧЕНИЕ ПО УМОЛЧАНИЮ, применяемое, когда ничего не настроено; магазин, который
+вызывает пакет иначе, задаёт `serpens_sdd.invocation` в файле конфигурации (или
+`--serpens-sdd-invocation`), а `resolveCallRoute()` называет резервные маршруты для репозитория без
+shim. Никогда не подставляйте голый `serpens-sdd`: он есть в PATH только при глобальной установке. `spns-spec` вызывает `new change` и `instructions` по артефактам,
+`spns-plan` — `instructions design` и `instructions tasks`, `spns-implement` —
+`instructions apply`, `spns-review` — `validate` и `status`, `spns-archive` — `archive`.
 
 ```bash
-grep -rn '<openspec>' "<installed-command-dir>" && exit 1 || true
+grep -rnE '<openspec>|<serpens-sdd>' "<installed-command-dir>" "<installed-skill-dir>" && exit 1 || true
 ```
 
 Если навыки не поддерживаются, вставьте их тела сейчас и докажите отсутствие
@@ -356,10 +383,14 @@ grep -rn '<openspec>' "<installed-command-dir>" && exit 1 || true
 ## 7. Подключите проверку в CI
 
 ШАБЛОН — адаптируйте под внутренний CI и проверьте дымовым прогоном, прежде чем на
-него полагаться. Каждый репозиторий гоняет ту же проверку, что агент и хук:
+него полагаться. Каждый репозиторий-спица гоняет ту же проверку, что агент и хук.
+Образу CI нужен глобально установленный `@fresh-fx59/serpens-sdd`, ИЛИ задача должна
+вызывать собственный закоммиченный shim репозитория, `./tools/serpens-sdd` — тот же
+файл, в который уже резолвится токен `<serpens-sdd>` — потому что в свежем checkout
+shim есть, а глобальной установки нет, если её не организовать отдельно:
 
 ```groovy
-stage('docs-disposer') { steps { sh 'bash "$(git rev-parse --show-toplevel)/tools/verify-docs.sh"' } }
+stage('docs-disposer') { steps { sh '<serpens-sdd> verify-docs' } }
 ```
 
 Системное хранилище гоняет сборку каталога ночью и на merge в репозиториях:
@@ -367,8 +398,8 @@ stage('docs-disposer') { steps { sh 'bash "$(git rev-parse --show-toplevel)/tool
 ```groovy
 stage('catalog') {
   steps {
-    sh 'bash "$(git rev-parse --show-toplevel)/tools/sync-submodules.sh" --inventory project-repositories.json --store-root "$(git rev-parse --show-toplevel)"'
-    sh 'node "$(git rev-parse --show-toplevel)/tools/aggregate-index.mjs" --strict'   // красный репозиторий валит сборку, громко
+    sh '<serpens-sdd> sync-submodules --inventory project-repositories.json --store-root "$(git rev-parse --show-toplevel)"'
+    sh '<serpens-sdd> catalog --strict'   // красный репозиторий валит сборку, громко
     sh 'git add catalog.json catalog.md && git diff --cached --quiet || git commit -m "chore(<TICKET>): refresh catalog" && git push'
   }
 }
@@ -379,7 +410,14 @@ stage('catalog') {
 
 ## 8. Докажите работу хуков и защит
 
-До реального изменения проверьте инструменты на временных плохих данных:
+Сначала докажите, что сам shim разрешается — сломанный shim обесценивает каждую
+защиту ниже:
+
+```bash
+<serpens-sdd> version
+```
+
+Затем прогоните все инструменты на временных плохих данных до реального изменения:
 
 - неверный OpenSpec-корень должен завершиться ошибкой;
 - повторённая форма общего контракта должна упасть на split-brain проверке;
@@ -391,35 +429,51 @@ stage('catalog') {
 
 ## 9. Финальная приёмка
 
-После последнего изменения проверьте синтаксис и повторите синхронизацию:
+После последнего изменения докажите, что shim разрешается, и повторите синхронизацию,
+чтобы доказать идемпотентность:
 
 ```bash
-bash -n "$CORP_SYSTEM_STORE_ROOT/tools/sync-submodules.sh"
-bash -n "$CORP_SYSTEM_STORE_ROOT/tools/repository-state.sh"
-bash "$CORP_SYSTEM_STORE_ROOT/tools/sync-submodules.sh" \
-  --inventory "$CORP_SYSTEM_STORE_ROOT/project-repositories.json" \
-  --store-root "$CORP_SYSTEM_STORE_ROOT"
-git -C "$CORP_SYSTEM_STORE_ROOT" status --short --branch
-git -C "$CORP_SYSTEM_STORE_ROOT" submodule status
+<serpens-sdd> version                       # shim разрешается; печатает редакцию ПАКЕТА (см. ниже)
+<serpens-sdd> sync-submodules --inventory project-repositories.json --store-root "$SERPENS_SYSTEM_STORE_ROOT"
+git -C "$SERPENS_SYSTEM_STORE_ROOT" status --short --branch
+git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule status
+```
+
+`<serpens-sdd> version` доказывает, что shim разрешается, и печатает редакцию пакета, до которого
+он доходит. Он НЕ доказывает, что сам shim свежий: shim — это двухстрочный `exec` абсолютного
+пути внутрь установленного пакета, поэтому shim прошлой редакции печатает ту же строку, что и
+новый. Чтобы доказать, что shim написан этой установкой, сравните цель его `exec` с пакетом,
+установленным сейчас:
+
+```bash
+installed_bin=$(node -e 'console.log(require.resolve("@fresh-fx59/serpens-sdd/bin/serpens-sdd.mjs"))' 2>/dev/null \
+  || readlink -f "$(command -v serpens-sdd)")
+for shim in "$SERPENS_SYSTEM_STORE_ROOT/tools/serpens-sdd" \
+    $(git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule --quiet foreach 'echo "$toplevel/$sm_path/tools/serpens-sdd"'); do
+  grep -q 'serpens-sdd shim' "$shim" || { echo "✗ $shim отсутствует или это не сгенерированный shim"; continue; }
+  grep -qF "$installed_bin" "$shim" || { echo "✗ $shim ведёт в другую установку"; continue; }
+  printf '%s -> ' "$shim"; "$shim" version
+done
 ```
 
 Также проверьте в каждом подмодуле OpenSpec-корень, базовую ветку, текущее состояние,
 хуки, docs-проверки, команды и навыки. Коммитьте хранилище и каждый репозиторий
 отдельно. Укажите источник списка (`mcp` или `manual`) и приложите свежий вывод.
 
-Файлы на диске — ещё не работающая установка. Вызовите одну Corp-команду в самом
-порту: запустите `corp-spec` на выдуманном тикете в одном подключённом репозитории,
+Файлы на диске — ещё не работающая установка. Вызовите одну Serpens-команду в самом
+порту: запустите `spns-spec` на выдуманном тикете в одном подключённом репозитории,
 убедитесь, что дело дошло до интервью и появился `openspec/changes/<id>/proposal.md`,
 затем удалите ветку и папку изменения. Установка, в которой ни одна команда ни разу
 не отработала в реальном порту, не доказана, что бы ни показывал список файлов.
 
 Закрывайте установку, только когда верна каждая строка:
 
-- [ ] хранилище живо: синхронизация и `aggregate-index --strict` зелёные в ночной задаче CI;
+- [ ] хранилище живо: синхронизация и `<serpens-sdd> catalog --strict` зелёные в ночной задаче CI;
 - [ ] в каждом подключённом репозитории проверка зелёная в pre-commit и в CI, индекс
       и `repo.txt` закоммичены;
-- [ ] команды и навыки установлены, ни одного токена `<openspec>` не осталось;
-- [ ] одна Corp-команда отработала целиком в порту;
+- [ ] команды и навыки установлены, ни одного токена `<openspec>` и `<serpens-sdd>` не осталось;
+- [ ] `tools/serpens-sdd` есть в хранилище и в каждом подмодуле, а `tools/*.sh` — нет ни в одном;
+- [ ] одна Serpens-команда отработала целиком в порту;
 - [ ] назван чемпион в каждой команде и назван владелец харнесса: за ним закрепления
       версий, задача каталога и повторные проверки порта;
 - [ ] записан путь исключения: любую задачу можно вести мимо потока, причина

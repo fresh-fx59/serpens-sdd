@@ -6,7 +6,7 @@
 
 ```bash
 export REPO_ROOT="$(git rev-parse --show-toplevel)"
-bash "$REPO_ROOT/tools/repository-state.sh" inspect
+<serpens-sdd> state inspect
 ```
 
 Перед новой историей выполните `prepare-base`, создайте `feature/<TICKET>` от
@@ -16,14 +16,14 @@ bash "$REPO_ROOT/tools/repository-state.sh" inspect
 
 Инструмент не делает reset, clean, rebase, не удаляет ветки, не меняет неизвестное
 грязное дерево и не скрывает локальные коммиты. База определяется по
-`CORP_BASE_BRANCH`, локальному `corp.baseBranch`, `.gitmodules` родительского
+`SERPENS_BASE_BRANCH`, локальному `serpens.baseBranch`, `.gitmodules` родительского
 хранилища, удалённому `develop`, затем удалённой ветке по умолчанию.
 
-`repository-state.sh inspect` печатает `dirty=` и `untracked=` как два отдельных факта, и
+`<serpens-sdd> state inspect` печатает `dirty=` и `untracked=` как два отдельных факта, и
 только первый что-то блокирует. `dirty` считает незакоммиченные изменения ОТСЛЕЖИВАЕМЫХ файлов
 (`--porcelain --untracked-files=no --ignore-submodules=untracked`). Untracked-файлы — локальные
 настройки, файлы с паролями, вывод сборки — выводятся предупреждением и не блокируют ничего,
-поэтому рабочий репозиторий не нужно вычищать перед командой corp-*. В сторе submodule, у
+поэтому рабочий репозиторий не нужно вычищать перед командой spns-*. В сторе submodule, у
 которого изменились собственные отслеживаемые файлы, называется в ошибке («uncommitted changes
 to TRACKED files inside submodule(s): …»), а не вменяется стору; untracked-файл внутри
 submodule оставляет стор чистым.
@@ -31,46 +31,46 @@ submodule оставляет стор чистым.
 ## Какая это версия набора?
 
 Набор версионирован. `VERSION` содержит редакцию, каждая поставляемая команда, навык
-и инструмент несут метку `corp-version:`, а `MANIFEST.sha256` фиксирует их точные
+и инструмент несут метку `serpens-version:`, а `MANIFEST.sha256` фиксирует их точные
 байты. Чтобы отличить файл набора от локально изменённой копии:
 
 ```bash
-KV="$CORP_SDD_ROOT/scripts/tools/kit-version.sh"
-bash "$KV" show                       # редакция набора
-bash "$KV" list
-bash "$KV" check                      # падает, если штамп расходится с VERSION                       # все файлы с метками
-bash "$KV" verify                     # ничего не менялось с той редакции
-bash "$KV" identify <файл-установки>  # pristine / MODIFIED / UNSTAMPED
+KV="<serpens-sdd> version"
+$KV show      --root "$SERPENS_SDD_ROOT"                     # редакция набора
+$KV list      --root "$SERPENS_SDD_ROOT"                     # все файлы с метками и их метка
+$KV check     --root "$SERPENS_SDD_ROOT"                     # падает, если штамп расходится с VERSION
+$KV verify    --root "$SERPENS_SDD_ROOT"                     # ничего не менялось с той редакции
+$KV identify  --root "$SERPENS_SDD_ROOT" <файл-установки>    # pristine / MODIFIED / UNSTAMPED
 ```
 
-Запускай его из распакованного набора: он читает `VERSION` и `MANIFEST.sha256` рядом с
-собой, поэтому не входит в инструменты, устанавливаемые в репозиторий (`--root <набор>`
-указывает на другой распакованный набор). `identify` считает хеш указанного файла,
+`--root <корень-набора>` обязателен в каждом режиме: инструмент больше не живёт внутри
+набора, о котором сообщает, поэтому `VERSION` и `MANIFEST.sha256` он читает оттуда, куда
+указывает `--root`, а не рядом с собой. `identify` считает хеш указанного файла,
 поэтому работает с установленной копией по любому пути, включая каталог команд в
 домашней папке агента. `UNSTAMPED` — копия старше версионирования или ваша
 собственная; `MODIFIED` — метка есть, а байты другие.
 
 ## Процесс
 
-1. `corp-spec`: проверяет репозитории, а затем сначала определяет, где он находится: без ключа
+1. `spns-spec`: проверяет репозитории, а затем сначала определяет, где он находится: без ключа
    трекера ветки нет (спрашивает один раз и никогда не выдумывает ключ), а существующая
    `feature/<TICKET>` — на ней вы или нет — продолжается, а не создаётся заново. Через
    `prepare-base` идёт только ветка, которой нет нигде. Дальше создаёт изменение и запрашивает у
    CLI OpenSpec `proposal` и `specs` по одному артефакту.
-2. `corp-plan`: подтверждает ветку и создаёт актуальные design и tasks.
-3. `corp-implement`: подтверждает ветку, входит в OpenSpec apply и применяет Corp TDD.
-4. `corp-review`: проверяет состояние, затем выполняет `<openspec> validate <change-id> --type
+2. `spns-plan`: подтверждает ветку и создаёт актуальные design и tasks.
+3. `spns-implement`: подтверждает ветку, входит в OpenSpec apply и применяет Serpens TDD.
+4. `spns-review`: проверяет состояние, затем выполняет `<openspec> validate <change-id> --type
    change --strict --json` и `<openspec> status --change <change-id> --json` до ревью человеком.
    Подкоманды `verify` в OpenSpec 1.10 нет.
-5. `corp-test-plan` и `corp-autotest`: строят проверки из утверждённых сценариев.
-   `corp-test-plan` — **black-box**: запрос или событие для отправки, ожидаемый
+5. `spns-test-plan` и `spns-autotest`: строят проверки из утверждённых сценариев.
+   `spns-test-plan` — **black-box**: запрос или событие для отправки, ожидаемый
    ответ и ожидаемые сохранённые строки на стенде разработки — комментарием в той же задаче,
-   а не отдельной задачей на тестирование. `corp-autotest` — слой внутри кода.
-6. После merge `corp-archive` выбирает место коммита архивации и запускает OpenSpec
+   а не отдельной задачей на тестирование. `spns-autotest` — слой внутри кода.
+6. После merge `spns-archive` выбирает место коммита архивации и запускает OpenSpec
    archive. Без флага он спрашивает, какое из трёх размещений выбрать, и никогда не решает сам;
    вариант (1) режет свежую `feature/<TICKET>` от подготовленной базы — без суффикса, потому что
-   `check-git-naming.sh` принимает только `feature/ABCD-1234`, и ветка с суффиксом не пройдёт
-   pre-push. `--branch <имя>` задаёт её имя; `--here` архивирует в текущей ветке. Любой режим
+   `<serpens-sdd> git-naming` принимает только `feature/ABCD-1234` и ничего другого, и ветка
+   с суффиксом не пройдёт pre-push guard. `--branch <имя>` задаёт её имя; `--here` архивирует в текущей ветке. Любой режим
    проходит через `assert-archivable`: чистое дерево и HEAD, уже содержащий базу.
 
 Точные вызовы OpenSpec хранятся в `port-facts.md` и установленных командах.
@@ -83,7 +83,7 @@ bash "$KV" identify <файл-установки>  # pristine / MODIFIED / UNSTA
 
 ```bash
 export STORE_ROOT="$(git rev-parse --show-toplevel)"
-bash "$STORE_ROOT/tools/sync-submodules.sh" \
+<serpens-sdd> sync-submodules \
   --inventory "$STORE_ROOT/project-repositories.json" --store-root "$STORE_ROOT"
 git -C "$STORE_ROOT" submodule status
 ```
@@ -98,7 +98,7 @@ git -C "$STORE_ROOT" submodule status
 git -C "$STORE_ROOT" submodule foreach --recursive 'git fetch --prune origin'
 ```
 
-Безопасное перемещение базы делайте через `repository-state.sh prepare-base` внутри
+Безопасное перемещение базы делайте через `<serpens-sdd> state prepare-base` внутри
 каждого репозитория. Не используйте массовый checkout или reset.
 
 ## Межрепозиторные изменения
@@ -112,7 +112,7 @@ git -C "$STORE_ROOT" submodule foreach --recursive 'git fetch --prune origin'
 После обновления индексов репозиториев пересоберите каталог:
 
 ```bash
-node "$STORE_ROOT/tools/aggregate-index.mjs" --strict "$STORE_ROOT"
+<serpens-sdd> catalog --strict "$STORE_ROOT"
 ```
 
 ## Восстановление состояния
@@ -133,8 +133,8 @@ Zoekt необязателен. Процесс работает без него.
 `zoekt-git-index` и Universal Ctags, затем:
 
 ```bash
-bash "$STORE_ROOT/tools/index-all.sh" --store-root "$STORE_ROOT" \
-  --index-dir "${CORP_ZOEKT_INDEX_DIR:-$STORE_ROOT/.cache/zoekt/index}"
+<serpens-sdd> index-code --store-root "$STORE_ROOT" \
+  --index-dir "${SERPENS_ZOEKT_INDEX_DIR:-$STORE_ROOT/.cache/zoekt/index}"
 ```
 
 Инструмент читает `.gitmodules`, проверяет все пути до индексации, требует именно
@@ -192,8 +192,8 @@ git log --diff-filter=A --format=%ct -- "openspec/changes/<id>/proposal.md" | ta
 повторением установки. Прочитайте инструкцию до получения нового комплекта.
 
 Коротко: сначала составьте опись установленных файлов через
-`kit-version.sh identify`, проверьте каждый репозиторий через
-`repository-state.sh prepare-base`, обновите `tools/` хранилища **и** `tools/`
+`<serpens-sdd> version identify --root <набор>`, проверьте каждый репозиторий через
+`<serpens-sdd> state prepare-base`, обновите `tools/` хранилища **и** `tools/`
 каждого репозитория, переустановите команды и навыки и заново подставьте каждый
 токен `<openspec>` из `port-facts.md`, останавливайтесь на каждой
 копии со статусом `MODIFIED` вместо перезаписи, повторите негативные тесты и

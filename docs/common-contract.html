@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="light dark">
-<title>The Common Contract — corp-sdd</title>
-<meta name="description" content="How corp-sdd keeps a cross-repo contract from forking: one owner, a linked store spec, and the two fetch routes a spoke needs.">
+<title>The Common Contract — serpens-sdd</title>
+<meta name="description" content="How serpens-sdd keeps a cross-repo contract from forking: one owner, a linked store spec, and the two fetch routes a spoke needs.">
 </head>
 <body>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chivo:ital,wght@0,400;0,600;0,800;1,400&family=Source+Serif+4:ital,opsz,wght@0,8..60,400;0,8..60,600;1,8..60,400&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
@@ -282,16 +282,16 @@
 
 <div class="wrap">
 <header class="mast">
-  <p class="eyebrow">github.com/fresh-fx59/corp-sdd · kit edition 2026-08-26.7</p>
+  <p class="eyebrow">github.com/fresh-fx59/serpens-sdd · kit edition 2026-08-26.7</p>
   <h1>The Common Contract</h1>
-  <p class="standfirst">One shape, one owner, one file. Every repository that touches it <b>links</b> that file — and a lint fails the commit if anyone pastes the shape instead. This is how corp-sdd keeps a cross-repo contract from forking into five slightly different truths.</p>
+  <p class="standfirst">One shape, one owner, one file. Every repository that touches it <b>links</b> that file — and a lint fails the commit if anyone pastes the shape instead. This is how serpens-sdd keeps a cross-repo contract from forking into five slightly different truths.</p>
 </header>
 
 <section class="col">
   <h2><span class="num">01 / the problem</span>Why a contract needs an owner</h2>
   <p class="lede">A product spread over five repositories has facts that live between them: an event payload, an endpoint shape, a table the consumer reads. Nobody owns "between".</p>
   <p>Write that shape into each repository's spec and you get five copies. They agree on the day they are written. Then the producer adds a field, one consumer's copy is updated, and the other four become confidently wrong documentation — the worst kind, because agents and people both read it as fact.</p>
-  <p>corp-sdd calls that failure <strong>split brain</strong>, and treats it as the thing the whole design exists to prevent. The rule it enforces:</p>
+  <p>serpens-sdd calls that failure <strong>split brain</strong>, and treats it as the thing the whole design exists to prevent. The rule it enforces:</p>
   <div class="rule">
     <span class="k">one spec-truth</span>
     <p>A cross-repo contract fact lives in exactly <strong>one</strong> place — the system store. A spoke repository <strong>links</strong> the store contract. It never restates the shape.</p>
@@ -408,7 +408,7 @@ references:
     remote: git@git.acme.internal:acme/system-store.git</code></pre>
         <p>This block is what makes a spoke able to <em>link</em> instead of restate. Two things break without it, and both are silent:</p>
         <ul>
-          <li>Neither fetch route resolves — the lines <code>corp-spec</code> writes into every cross-repo delta.</li>
+          <li>Neither fetch route resolves — the lines <code>spns-spec</code> writes into every cross-repo delta.</li>
           <li><code>check-contract-split-brain.mjs</code> exits <span class="pill p-pass">0</span> without checking anything, because it scopes itself to repos that declare <code>references:</code>. A pasted contract shape then goes unnoticed.</li>
         </ul>
       </div>
@@ -544,7 +544,7 @@ if the CLI refuses (broken contract proposal, unregistered store), read the file
   </div>
 <pre class="col"><code><span class="cm"># tools/verify-docs.sh — one code path</span>
 node tools/gen-index.mjs --check
-node tools/corp-lint.mjs
+node tools/serpens-lint.mjs
 node tools/check-contract-split-brain.mjs   <span class="cm"># no-op in repos with no references:</span></code></pre>
   <div class="tw col" style="max-width:none">
     <table>
@@ -567,7 +567,7 @@ node tools/check-contract-split-brain.mjs   <span class="cm"># no-op in repos wi
 
 <section>
   <h2 class="col"><span class="num">05 / workflow</span>Contract first — the order that makes it hold</h2>
-  <p class="lede col">The lint stops a duplicated shape. Ticket and merge order stop something else: a consumer shipping against a contract that was never agreed. In corp-sdd a cross-repo story is one parent plus one child per repository, and the parent <em>is</em> the contract.</p>
+  <p class="lede col">The lint stops a duplicated shape. Ticket and merge order stop something else: a consumer shipping against a contract that was never agreed. In serpens-sdd a cross-repo story is one parent plus one child per repository, and the parent <em>is</em> the contract.</p>
 
   <figure>
     <div class="scroll">
@@ -605,7 +605,7 @@ node tools/check-contract-split-brain.mjs   <span class="cm"># no-op in repos wi
   </figure>
 
   <div class="col">
-    <h3>What <code>corp-spec</code> does with all this</h3>
+    <h3>What <code>spns-spec</code> does with all this</h3>
     <p>The analyst-facing command decides the shape before creating anything, and refuses to fan out for the wrong reason:</p>
     <ul>
       <li><strong>Interview once</strong>, at story level — even for five repositories. The requirements are shared; asking per repo asks the same question five times and invites five different answers.</li>
@@ -639,10 +639,10 @@ node tools/check-contract-split-brain.mjs   <span class="cm"># no-op in repos wi
       <span class="sn">ii</span>
       <div>
         <h3>Put the store beside the kit, never inside it</h3>
-<pre><code>export CORP_SDD_ROOT="$(git rev-parse --show-toplevel)"
-export CORP_WORKSPACE_ROOT="$(cd "$CORP_SDD_ROOT/.." &amp;&amp; pwd -P)"
-export CORP_SYSTEM_STORE_ROOT="${CORP_SYSTEM_STORE_ROOT:-$CORP_WORKSPACE_ROOT/system-store}"
-test "$CORP_SYSTEM_STORE_ROOT" != "$CORP_SDD_ROOT"</code></pre>
+<pre><code>export SERPENS_SDD_ROOT="$(git rev-parse --show-toplevel)"
+export SERPENS_WORKSPACE_ROOT="$(cd "$SERPENS_SDD_ROOT/.." &amp;&amp; pwd -P)"
+export SERPENS_SYSTEM_STORE_ROOT="${SERPENS_SYSTEM_STORE_ROOT:-$SERPENS_WORKSPACE_ROOT/system-store}"
+test "$SERPENS_SYSTEM_STORE_ROOT" != "$SERPENS_SDD_ROOT"</code></pre>
         <p>Then let Git decide which of three cases you are in — never guess, and never ask a person something Git can answer:</p>
 <pre><code>git ls-remote --heads "&lt;store-remote&gt;" "&lt;store-base-branch&gt;"</code></pre>
         <p>A printed ref means the store already exists: <strong>clone it.</strong> Running the template path here would <code>git init</code> a second, unrelated history against a remote that already holds the project's store — the one mistake in that stage that costs a rewrite rather than a retry. Nothing printed, and this is the first install anywhere: copy <code>system-store-template/</code>, then <code>git init</code>. Already on this machine: touch neither, and gate its branch and worktree with <code>repository-state.sh prepare-base</code>.</p>
@@ -677,7 +677,7 @@ CIRCUIT BREAKER: same error surviving 3 attempts → STOP and ask a human.</code
       <div>
         <h3>Prove the guards with bad input, then with a real command</h3>
         <p>Before trusting any of it: a bad OpenSpec root must fail; <strong>a duplicated shared contract shape must fail the split-brain check</strong>; a bad branch and mismatched ticket commit must fail naming checks; a deliberate bad temporary commit must be rejected by the installed hook. Never weaken a guard to make this green.</p>
-        <p>Files on disk are not a working install. Run <code>corp-spec</code> against a throwaway ticket in one onboarded repository, confirm it reaches the interview and writes <code>openspec/changes/&lt;id&gt;/proposal.md</code>, then delete the branch and the change folder.</p>
+        <p>Files on disk are not a working install. Run <code>spns-spec</code> against a throwaway ticket in one onboarded repository, confirm it reaches the interview and writes <code>openspec/changes/&lt;id&gt;/proposal.md</code>, then delete the branch and the change folder.</p>
       </div>
     </li>
   </ol>
@@ -711,7 +711,7 @@ CIRCUIT BREAKER: same error surviving 3 attempts → STOP and ask a human.</code
           <td><code>check-openspec-root.sh</code> before any spec work; onboard the repo</td>
         </tr>
         <tr>
-          <td><code>corp-spec</code> run for a spoke without entering its submodule</td>
+          <td><code>spns-spec</code> run for a spoke without entering its submodule</td>
           <td><code>REPO_ROOT</code> equals <code>STORE_ROOT</code>; the spoke's proposal and delta land in the store</td>
           <td><code>cd "$STORE_ROOT/submodules/&lt;repo&gt;"</code> first, then resolve and compare the two roots</td>
         </tr>
@@ -723,7 +723,7 @@ CIRCUIT BREAKER: same error surviving 3 attempts → STOP and ask a human.</code
         <tr>
           <td>Contract proposal written without a literal <code>## Why</code> heading</td>
           <td><span class="pill p-fail">✗ exit 1</span> <code>{"code":"show_error","message":"Change must have a Why section"}</code> on the change route every spoke uses — while <code>validate --strict</code> still reports <code>"valid": true</code> and <code>status</code> and <code>list</code> still work. No flag bypasses it: <code>--requirements-only</code>, <code>--no-scenarios</code> and the deprecated <code>change show</code> all fail the same way</td>
-          <td>Add literal <code>## Why</code> and <code>## What Changes</code> headings to <code>proposal.md</code>. <code>corp-lint.mjs</code> now hard-fails on either one missing, so <code>verify-docs.sh</code> catches it before the push</td>
+          <td>Add literal <code>## Why</code> and <code>## What Changes</code> headings to <code>proposal.md</code>. <code>serpens-lint.mjs</code> now hard-fails on either one missing, so <code>verify-docs.sh</code> catches it before the push</td>
         </tr>
         <tr>
           <td>Change-scoped fetch run without <code>--json</code></td>
@@ -738,7 +738,7 @@ CIRCUIT BREAKER: same error surviving 3 attempts → STOP and ask a human.</code
         <tr>
           <td><code>MODIFIED</code>/<code>REMOVED</code>/<code>RENAMED</code> delta for a capability with no living spec</td>
           <td><span class="pill p-warn">⚠ exit 0</span> <code>validate --strict</code> reports <code>"valid": true</code>; <code>openspec archive</code> then fails <em>post-merge</em>, on the base branch, with <code>archive_spec_update_failed: "&lt;id&gt;: target spec does not exist; only ADDED requirements are allowed for new specs. MODIFIED and RENAMED operations require an existing spec."</code></td>
-          <td>Use <code>## ADDED Requirements</code> for a capability that has no <code>openspec/specs/&lt;id&gt;/spec.md</code> yet, or fix the capability directory name. <code>corp-lint.mjs</code> now hard-fails on this at authoring time, so <code>verify-docs.sh</code> catches it before the push</td>
+          <td>Use <code>## ADDED Requirements</code> for a capability that has no <code>openspec/specs/&lt;id&gt;/spec.md</code> yet, or fix the capability directory name. <code>serpens-lint.mjs</code> now hard-fails on this at authoring time, so <code>verify-docs.sh</code> catches it before the push</td>
         </tr>
         <tr>
           <td>Shape pasted into a spoke delta</td>
@@ -771,7 +771,7 @@ CIRCUIT BREAKER: same error surviving 3 attempts → STOP and ask a human.</code
 </section>
 
 <footer>
-  Read from the kit itself at edition <code>2026-08-26.7</code> — the <code>en/</code> tree of <code>github.com/fresh-fx59/corp-sdd</code>, synced from <code>corp-sdd-starter/</code>: <code>docs/SETUP.md</code>, <code>docs/OPERATIONS.md</code>, <code>docs/FLOW.md</code>, <code>commands/corp-spec.md</code>, <code>templates/store-contract.md</code>, <code>scripts/tools/corp-lint.mjs</code>, <code>scripts/tools/check-contract-split-brain.mjs</code>, <code>scripts/tools/check-openspec-root.sh</code>, <code>scripts/tools/verify-docs.sh</code>, <code>skills/corp-drill-down/SKILL.md</code>. The <code>ru/</code> tree is the same kit translated.<br>
+  Read from the kit itself at edition <code>2026-08-26.7</code> — the <code>en/</code> tree of <code>github.com/fresh-fx59/serpens-sdd</code>, synced from <code>serpens-sdd-starter/</code>: <code>docs/SETUP.md</code>, <code>docs/OPERATIONS.md</code>, <code>docs/FLOW.md</code>, <code>commands/spns-spec.md</code>, <code>templates/store-contract.md</code>, <code>scripts/tools/serpens-lint.mjs</code>, <code>scripts/tools/check-contract-split-brain.mjs</code>, <code>scripts/tools/check-openspec-root.sh</code>, <code>scripts/tools/verify-docs.sh</code>, <code>skills/spns-drill-down/SKILL.md</code>. The <code>ru/</code> tree is the same kit translated.<br>
   Kit edition <code>2026-08-26.7</code> · root-walk behaviour verified against OpenSpec 1.7.0 and re-confirmed on 1.10.0; the two fetch routes and the missing-<code>## Why</code> failure were measured on 1.10.0 on 2026-08-26 against a registered store with two spokes.
 </footer>
 </div>

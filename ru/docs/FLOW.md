@@ -1,11 +1,11 @@
-# Процесс Corp SDD
+# Процесс Serpens SDD
 
 Это краткое описание процесса на русском языке. Установка описана только в
 [`SETUP.md`](SETUP.md), обновление уже установленного рабочего пространства — только в
 [`UPGRADE.md`](UPGRADE.md), а ежедневная работа — только в [`OPERATIONS.md`](OPERATIONS.md).
 
 Те же семь этапов ещё в двух видах: [`FLOW-TABLE.md`](FLOW-TABLE.md) — большая таблица: что делает
-Corp SDD, какой вызов OpenSpec, какая дисциплина Superpowers, какие скрипты реально запускаются,
+Serpens SDD, какой вызов OpenSpec, какая дисциплина Superpowers, какие скрипты реально запускаются,
 выходное условие и ценность по сравнению с базовым OpenSpec. [`FLOW-SCHEMA.md`](FLOW-SCHEMA.md) —
 схема на один экран.
 
@@ -20,7 +20,7 @@ Corp SDD, какой вызов OpenSpec, какая дисциплина Superp
 4. Запустить `sync-submodules.sh`. Скрипт регистрирует, инициализирует и обновляет только объявленные подмодули.
 5. Установить команды, инструменты и шесть автономных навыков `corp-*` из комплекта.
 6. В каждом подключённом репозитории установить `templates/testing-stack.md` как
-   `docs/testing-stack.md` и заполнить его вместе с командой. `corp-tdd` и `corp-debugging` не
+   `docs/testing-stack.md` и заполнить его вместе с командой. `spns-tdd` и `spns-debugging` не
    называют собственный фреймворк — они читают этот файл, поэтому пустой файл оставляет оба
    навыка без стека.
 7. Заменить единственный токен `<openspec>` в каждой установленной команде и в каждом навыке на
@@ -36,17 +36,17 @@ MCP упрощает поиск репозиториев, но не обязат
 
 | Этап | Команда Corp | Обязательное действие OpenSpec | Проверка состояния репозитория |
 |---|---|---|---|
-| Спецификация | `corp-spec` | `<openspec> new change <change-id>`, затем `instructions proposal` и `instructions specs` по одному артефакту за раз, затем `validate <change-id> --type change --strict --json` до `"valid": true`. | Сначала `inspect`; встать на существующую ветку `feature/<TICKET>` либо подготовить настроенную базовую ветку и создать её. |
-| План | `corp-plan` | `<openspec> instructions design` и `instructions tasks`, по одному за раз; больше ничего. | `assert-change <TICKET> --checkout` — переводит на существующую ветку истории и никогда её не создаёт. |
-| Реализация | `corp-implement` | `<openspec> instructions apply --change <change-id> --json` только ради состояния задач; `validate --strict --json` заново при любой правке дельты. | `assert-change <TICKET> --checkout --allow-dirty`. |
-| План тестов | `corp-test-plan` | Команды OpenSpec нет. Читает сценарии дельты и блок OBSERVABLE CONTRACT в `research.md` изменения. | `inspect`, плюс `assert-change <TICKET> --allow-dirty` на локальной ветке изменения. |
-| Генерация автотестов | `corp-autotest` | Команды OpenSpec нет. Читает утверждённые сценарии дельты. | `assert-change <TICKET> --checkout --allow-dirty`. |
-| Ревью | `corp-review` | `<openspec> validate <change-id> --type change --strict --json` и `status --change <change-id> --json` до углублённого ревью кода. | `inspect`, плюс `assert-change <TICKET> --allow-dirty` на локальной ветке истории. |
-| Архив | `corp-archive` | `validate --strict --json`, затем `<openspec> archive <change-id> --yes --json` после слияния pull request. | `prepare-base` (кроме режима `--here`), затем `assert-archivable`. |
+| Спецификация | `spns-spec` | `<openspec> new change <change-id>`, затем `instructions proposal` и `instructions specs` по одному артефакту за раз, затем `validate <change-id> --type change --strict --json` до `"valid": true`. | Сначала `inspect`; встать на существующую ветку `feature/<TICKET>` либо подготовить настроенную базовую ветку и создать её. |
+| План | `spns-plan` | `<openspec> instructions design` и `instructions tasks`, по одному за раз; больше ничего. | `assert-change <TICKET> --checkout` — переводит на существующую ветку истории и никогда её не создаёт. |
+| Реализация | `spns-implement` | `<openspec> instructions apply --change <change-id> --json` только ради состояния задач; `validate --strict --json` заново при любой правке дельты. | `assert-change <TICKET> --checkout --allow-dirty`. |
+| План тестов | `spns-test-plan` | Команды OpenSpec нет. Читает сценарии дельты и блок OBSERVABLE CONTRACT в `research.md` изменения. | `inspect`, плюс `assert-change <TICKET> --allow-dirty` на локальной ветке изменения. |
+| Генерация автотестов | `spns-autotest` | Команды OpenSpec нет. Читает утверждённые сценарии дельты. | `assert-change <TICKET> --checkout --allow-dirty`. |
+| Ревью | `spns-review` | `<openspec> validate <change-id> --type change --strict --json` и `status --change <change-id> --json` до углублённого ревью кода. | `inspect`, плюс `assert-change <TICKET> --allow-dirty` на локальной ветке истории. |
+| Архив | `spns-archive` | `validate --strict --json`, затем `<openspec> archive <change-id> --yes --json` после слияния pull request. | `prepare-base` (кроме режима `--here`), затем `assert-archivable`. |
 
-`corp-spec`, `corp-plan`, `corp-implement`, `corp-autotest` и `corp-archive` сами доводят свою
+`spns-spec`, `spns-plan`, `spns-implement`, `spns-autotest` и `spns-archive` сами доводят свою
 работу до коммита: добавляют написанные файлы **по путям** — никогда `git add -A`, — коммитят с
-типом, которого требует `check-git-naming.sh`, и делают push. `corp-implement` коммитит ОДИН раз,
+типом, которого требует `check-git-naming.sh`, и делают push. `spns-implement` коммитит ОДИН раз,
 когда отмечены все задачи, и никогда не коммитит по задаче.
 
 Каждый проверяющий режим этой проверки — `prepare-base`, `assert-change`, `assert-archivable` —
@@ -64,5 +64,5 @@ OpenSpec идёт ВВЕРХ мимо `.git` в поисках каталога 
 Запустите девять скриптов из `tests/` для обоих языковых комплектов. Они проверяют синхронизацию
 подмодулей, безопасность веток, проверку владения корнем OpenSpec, агрегацию, индексацию,
 вычисление путей, объём документации, резервный путь без MCP, явные вызовы `<openspec>`, сами
-проверки `corp-lint.mjs`, линт расхождения контрактов во время межрепозиторного окна, штампы
+проверки `serpens-lint.mjs`, линт расхождения контрактов во время межрепозиторного окна, штампы
 редакции комплекта с манифестом и отсутствие старых путей клонов.

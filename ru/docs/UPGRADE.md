@@ -1,53 +1,133 @@
 # Задача обновления для агента
 
-Используйте эту инструкцию, когда рабочая копия уже существует — `corp-sdd`,
+Используйте эту инструкцию, когда рабочая копия уже существует — `@fresh-fx59/serpens-sdd`,
 соседнее системное хранилище и N подключённых подмодулей — и вы переводите её со
 старой редакции комплекта на текущую. Первая установка описана в
 `docs/SETUP.md`; этот файл её не заменяет.
 
 Останавливайтесь при любой ошибке. Сохраняйте команды и вывод в отчёте проекта.
-Во время обновления не удаляйте и не переписывайте существующие репозитории,
-ветки и локальную работу. Обновление меняет *файлы инструментов, команд и
-навыков*. Оно не трогает содержимое проекта.
+Во время обновления не удаляйте, не сбрасывайте, не чистите, не rebase-ите, не
+force-checkout-ите и не переписывайте существующий репозиторий. Обновление
+меняет *shim, установленные команды и навыки*. Оно не трогает содержимое
+проекта.
+
+## Обновление с редакции 2026-08-26.8 — граница переименования
+
+Это единственный поддерживаемый путь обновления до `2026-09-10.1`, и он пересекает **две**
+перемены сразу. Редакция `2026-08-26.9` никогда не публиковалась; её работа входит в эту
+редакцию, под новыми именами.
+
+Что изменилось:
+
+- Редакции до `2026-08-26.8` включительно копировали одиннадцать скриптов в `<store>/tools/`
+  и в `tools/` каждого подмодуля. Эта редакция не поставляет ни одного из них: исполняемый
+  код живёт внутри npm-пакета, а каждый репозиторий держит один сгенерированный shim.
+- Продукт переименован. Пакет — `@fresh-fx59/serpens-sdd`, бинарь и shim — `serpens-sdd`,
+  семь команд и шесть навыков несут префикс `spns-`, ключи git config — `serpens.agentDir` и
+  `serpens.baseBranch`, а каждая переменная окружения `CORP_*` теперь `SERPENS_*`. Ключ метки
+  во frontmatter — `serpens-version:`.
+
+Спеки, контракты, ADR, архивы, указатели подмодулей, идентификаторы хранилища и репозиториев
+не меняются ничем. Переименование затрагивает только собственные имена самой обвязки.
+
+Выполните эти шесть шагов по порядку, затем продолжайте с этапа 0 ниже как обычно.
+
+1. Установите пакет и докажите это:
+   `npm i -g @fresh-fx59/serpens-sdd@1.20260909.1`, затем `serpens-sdd version`.
+   Старое имя `@fresh-fx59/corp-sdd` в npm никогда не публиковалось; если магазин ставил
+   пакет из клона репозитория, сначала снесите ту глобальную установку, чтобы `corp-sdd`
+   нельзя было вызвать по привычке.
+2. Повторно запустите установщик на существующем хранилище, выбрав только три этапа,
+   которые пишут shim и переустанавливают команды и навыки — флага `--upgrade` нет, область
+   повторного запуска задаёт `--only`: `serpens-sdd init --only 3,5,6`. Этап 3 обновляет shim
+   и шаблоны хранилища, этап 5 делает то же в каждом подмодуле, этап 6 ставит
+   `commands/spns-*.md` и `skills/spns-*` и заново подставляет оба токена.
+3. **Удалите старые установленные имена.** Это единственное обновление, которое удаляет
+   файлы, не записанные установщиком в этой редакции, и это осознанное, названное исключение
+   из правила, сформулированного ниже в этом файле. Оставить их — худший из возможных
+   исходов: агент видит два набора команд, оба выглядят установленными, и один ведёт на путь
+   shim, которого больше нет.
+
+   ```bash
+   rm -f "<installed-command-dir>"/corp-*.md
+   rm -rf "<installed-skill-dir>"/corp-*
+   # каждый репозиторий рабочей копии, включая хранилище:
+   rm -f "<repo>"/tools/corp-sdd
+   ```
+
+   Перед удалением классифицируйте каждый файл точно так, как описывает этап 0 ниже: файл
+   `corp-*` со статусом `MODIFIED` или `UNSTAMPED` держит чью-то локальную правку и требует
+   записанного решения «оставить или заменить» с named решающим, а не `rm`.
+4. **Перенесите ключи git config, а не просто выставьте новые.** Для хранилища и каждого
+   подмодуля:
+
+   ```bash
+   for repo in "$SERPENS_SYSTEM_STORE_ROOT" $(git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule foreach --quiet 'echo "$toplevel/$sm_path"'); do
+     for pair in agentDir baseBranch; do
+       old=$(git -C "$repo" config --get "corp.$pair" 2>/dev/null || true)
+       if [ -n "$old" ]; then
+         git -C "$repo" config "serpens.$pair" "$old"
+         git -C "$repo" config --unset "corp.$pair"
+         echo "migrated $repo: serpens.$pair = $old"
+       fi
+     done
+   done
+   ```
+
+   Неустановленный ключ читается как **пустой, а не как ошибка**. Репозиторий, который вы
+   здесь пропустите, молча теряет свою область agent-dir, и линт начинает читать другой
+   каталог, чем записала установка — без единого сообщения. Докажите результат:
+   `git -C "<repo>" config --get serpens.agentDir` печатает значение в каждом репозитории, где
+   оно было, а `git -C "<repo>" config --get-regexp '^corp\.'` не печатает ничего.
+5. Перегенерируй и закоммить индекс везде, где он закоммичен, и каталог в хранилище:
+   `serpens-sdd index`, затем `git add openspec/index.json openspec/index.md openspec/repo.txt`
+   и коммить — в хранилище и в каждом подключённом подмодуле, у которого он есть; затем, в
+   хранилище, `serpens-sdd catalog`, `git add catalog.json catalog.md` и коммить. Строка
+   баннера `> GENERATED by ...` внутри `index.md` и `catalog.md` называет инструмент, поэтому
+   её текст изменился вместе с переименованием. Закоммиченная копия со старым баннером теперь
+   навсегда расходится с тем, что перегенерируют эти команды, а значит `index --check`, а с
+   ним `verify-docs`, pre-commit hook и CI станут красными в каждом пропущенном репозитории —
+   не потому, что изменились спеки, а только текст баннера. Сделай это ДО того, как считать
+   обновление завершённым, а не как реакцию на покраснение позже.
+6. Докажите подстановку и отсутствие старого имени вместе:
+
+   ```bash
+   grep -rnE '<openspec>|<serpens-sdd>' "<installed-command-dir>" "<installed-skill-dir>" && exit 1 || true
+   grep -rn 'corp-' "<installed-command-dir>" "<installed-skill-dir>" && exit 1 || true
+   ```
+
+   Непустой результат первого означает команду, которая не может запуститься. Непустой
+   результат второго означает, что обновление оставило мёртвое имя там, где его прочитает
+   агент.
+
+Остальная часть этого файла — этапы 0–9 ниже — общая процедура обновления, которая
+по-прежнему применяется от редакции к редакции, начиная с `2026-09-10.1`.
 
 ## 0. Снимите картину до первого изменения
 
-Определите те же устойчивые пути, что и при установке. Выполните это в корне
-нового распакованного `corp-sdd`:
+Определите те же устойчивые пути, что и при установке:
 
 ```bash
-export CORP_SDD_ROOT="$(git rev-parse --show-toplevel)"
-export CORP_WORKSPACE_ROOT="$(cd "$CORP_SDD_ROOT/.." && pwd -P)"
-export CORP_SYSTEM_STORE_ROOT="${CORP_SYSTEM_STORE_ROOT:-$CORP_WORKSPACE_ROOT/system-store}"
-export KV="$CORP_SDD_ROOT/scripts/tools/kit-version.sh"
-test -d "$CORP_SYSTEM_STORE_ROOT/.git" || test -f "$CORP_SYSTEM_STORE_ROOT/.git"
-test "$CORP_SYSTEM_STORE_ROOT" != "$CORP_SDD_ROOT"
+export SERPENS_WORKSPACE_ROOT="$(pwd -P)"
+export SERPENS_SYSTEM_STORE_ROOT="${SERPENS_SYSTEM_STORE_ROOT:-$SERPENS_WORKSPACE_ROOT/system-store}"
+test -d "$SERPENS_SYSTEM_STORE_ROOT/.git" || test -f "$SERPENS_SYSTEM_STORE_ROOT/.git"
 ```
 
 Назовите обе редакции — устанавливаемую и уже лежащую на диске:
 
 ```bash
-bash "$KV" show      # редакция этого комплекта
-bash "$KV" verify    # файлы комплекта — это байты той редакции
-bash "$KV" list      # все файлы с метками
+serpens-sdd version                          # редакция этой установки пакета
 ```
 
-`verify` должен быть зелёным до первого копирования. Комплект, не проходящий
-собственный манифест, — не релиз; распакуйте его заново.
-
-Теперь классифицируйте каждую **установленную** копию. `identify` считает хеш
-указанного файла, поэтому работает по любому пути, включая каталог команд в
-домашней папке агента:
+Теперь классифицируйте каждую **установленную** копию команды и навыка — это
+единственные файлы, которые обновление перезаписывает. `identify` считает хеш
+указанного файла, поэтому работает по любому пути, включая каталог команд в домашней
+папке агента (`<kit-root>` — это собственный каталог `kits/<lang>` установленного пакета,
+например `$(npm root -g)/@fresh-fx59/serpens-sdd/kits/en`):
 
 ```bash
-# инструменты хранилища
-bash "$KV" identify "$CORP_SYSTEM_STORE_ROOT"/tools/* || true
-# инструменты каждого подмодуля
-git -C "$CORP_SYSTEM_STORE_ROOT" submodule foreach --quiet 'echo "$toplevel/$sm_path"' \
-  | while IFS= read -r repo; do bash "$KV" identify "$repo"/tools/* || true; done
-# установленные команды и навыки по путям из port-facts.md
-bash "$KV" identify "<installed-command-dir>"/corp-*.md || true
-bash "$KV" identify "<installed-skill-dir>"/corp-*/SKILL.md || true
+serpens-sdd version identify --root "<kit-root>" "<installed-command-dir>"/spns-*.md || true
+serpens-sdd version identify --root "<kit-root>" "<installed-skill-dir>"/spns-*/SKILL.md || true
 ```
 
 Каждая строка — один из трёх вердиктов:
@@ -55,12 +135,17 @@ bash "$KV" identify "<installed-skill-dir>"/corp-*/SKILL.md || true
 | Вердикт | Значение | Что делает обновление |
 |---|---|---|
 | `pristine <редакция>` | нетронутый файл комплекта той редакции | заменяет молча |
-| `MODIFIED` | метка есть, а байты другие — файл правили | **стоп**, этап 5 |
-| `UNSTAMPED` | копия старше версионирования или своя | как MODIFIED, этап 5 |
+| `MODIFIED` | метка есть, а байты другие — файл правили | **стоп**, этап 6 ниже |
+| `UNSTAMPED` | копия старше версионирования или своя | как MODIFIED, этап 6 ниже |
 
 Запишите полную опись из трёх групп в отчёт **до** первого копирования. После
 обновления её уже не восстановить: заменённый файл выглядит ровно так же, как
 файл, который и без того был актуальным.
+
+Сам shim так не классифицируется: `serpens-sdd init` отказывается перезаписывать
+`tools/serpens-sdd`, если в нём нет собственной метки сгенерированного файла — правленый
+вручную shim это жёсткая остановка в момент записи, а не решение «оставить или
+заменить» здесь.
 
 ## 1. Каждый репозиторий чист и на базовой ветке
 
@@ -69,22 +154,21 @@ bash "$KV" identify "<installed-skill-dir>"/corp-*/SKILL.md || true
 копирования:
 
 ```bash
-bash "$CORP_SDD_ROOT/scripts/tools/repository-state.sh" prepare-base \
-  --repo "$CORP_SYSTEM_STORE_ROOT" --base "$(git -C "$CORP_SYSTEM_STORE_ROOT" config corp.baseBranch)"
-git -C "$CORP_SYSTEM_STORE_ROOT" submodule foreach --quiet 'echo "$toplevel/$sm_path"' \
+<serpens-sdd> state prepare-base \
+  --repo "$SERPENS_SYSTEM_STORE_ROOT" --base "$(git -C "$SERPENS_SYSTEM_STORE_ROOT" config serpens.baseBranch)"
+git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule foreach --quiet 'echo "$toplevel/$sm_path"' \
   | while IFS= read -r repo; do
-      bash "$CORP_SDD_ROOT/scripts/tools/repository-state.sh" prepare-base --repo "$repo"
+      <serpens-sdd> state prepare-base --repo "$repo"
     done
 ```
 
 Проверка состояния отклоняет грязное дерево, detached HEAD, неотправленные коммиты
 на самой базовой ветке, чужой upstream и расхождение. Она делает только проверенный
 fast-forward. Про stash и коммиты на других локальных ветках она сообщает, но не
-блокирует работу и ничего не трогает.
-Разбирайте каждую остановку с владельцем этой работы — не обходите её. Репозиторий,
-который не прошёл проверку, пропускается целиком и называется в отчёте: обновлённый
-наполовину репозиторий — единственное состояние, которое ежедневный поток не
-замечает.
+блокирует работу и ничего не трогает. Разбирайте каждую остановку с владельцем этой
+работы — не обходите её. Репозиторий, который не прошёл проверку, пропускается целиком
+и называется в отчёте: обновлённый наполовину репозиторий — единственное состояние,
+которое ежедневный поток не замечает.
 
 Не заводите одну общую ветку обновления на все репозитории. У каждого свой коммит
 на своей базе, чтобы каждый откатывался отдельно (этап 9).
@@ -103,122 +187,107 @@ npx @fission-ai/openspec@<закреплённая-версия> --version
 Обновите копию фактов в хранилище, сохранив записанные идентификаторы:
 
 ```bash
-git -C "$CORP_SYSTEM_STORE_ROOT" diff -- port-facts.md
+git -C "$SERPENS_SYSTEM_STORE_ROOT" diff -- port-facts.md
 ```
 
 `<store-id>` и id репозиториев — это контракт, а не подпись. Обновление никогда их
 не переименовывает: межрепозиторные ссылки ищут по id и молча перестанут
 разрешаться.
 
-## 3. Обновите инструменты самого системного хранилища
+## 3. Обновите shim в хранилище и в каждом подмодуле
 
-Это тот этап, которого не было в старой заметке об обновлении, и единственное
-место, где ставятся `tools/` хранилища. Пропустив его, вы оставите хранилище на
-прежних `sync-submodules.sh`, `repository-state.sh` и `aggregate-index.mjs`, тогда
-как все остальные файлы уже новые:
+`serpens-sdd init --only 3,5` (см. раздел «Обновление с…» выше) пишет свежий
+`tools/serpens-sdd` в хранилище и в каждом подмодуле, до которого дотягивается
+`.gitmodules`, и обновляет шаблоны, которые ставят эти этапы. Пропуск этого этапа
+оставляет shim хранилища и каждого подмодуля указывающим на прежнюю версию пакета,
+пока все остальные файлы уже считают себя актуальными.
 
-```bash
-install -m 0755 "$CORP_SDD_ROOT/scripts/tools/sync-submodules.sh" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0755 "$CORP_SDD_ROOT/scripts/tools/repository-state.sh" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0755 "$CORP_SDD_ROOT/scripts/tools/index-all.sh" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0755 "$CORP_SDD_ROOT/scripts/tools/verify-docs.sh" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0755 "$CORP_SDD_ROOT/scripts/tools/check-git-naming.sh" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0644 "$CORP_SDD_ROOT/scripts/tools/aggregate-index.mjs" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0644 "$CORP_SDD_ROOT/scripts/tools/gen-index.mjs" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0644 "$CORP_SDD_ROOT/scripts/tools/corp-lint.mjs" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0644 "$CORP_SDD_ROOT/scripts/tools/check-contract-split-brain.mjs" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0755 "$CORP_SDD_ROOT/scripts/tools/check-openspec-root.sh" "$CORP_SYSTEM_STORE_ROOT/tools/"
-install -m 0644 "$CORP_SDD_ROOT/templates/conventions-branching.md" "$CORP_SYSTEM_STORE_ROOT/conventions/branching.md"
-mkdir -p "$CORP_SYSTEM_STORE_ROOT/templates"
-install -m 0644 "$CORP_SDD_ROOT/templates/store-contract.md"  "$CORP_SYSTEM_STORE_ROOT/templates/"
-install -m 0644 "$CORP_SDD_ROOT/templates/testing-stack.md"   "$CORP_SYSTEM_STORE_ROOT/templates/"
-install -m 0644 "$CORP_SDD_ROOT/templates/research.md"        "$CORP_SYSTEM_STORE_ROOT/templates/"
-install -m 0644 "$CORP_SDD_ROOT/templates/adr.md"             "$CORP_SYSTEM_STORE_ROOT/templates/"
-```
-
-`port-facts.md` в этом списке **нет**. В нём факты конкретной установки, а не
+`port-facts.md` этот этап не трогает. В нём факты конкретной установки, а не
 содержимое комплекта; им владеет этап 2. Пустой шаблон поверх него сотрёт данные
 порта, из которых были подставлены вызовы в установленных командах.
 
-Докажите копирование, коммит оставьте этапу 8:
+Докажите обновление. Сам по себе `"$repo/tools/serpens-sdd" version` здесь не доказывает ничего:
+shim — это двухстрочный `exec` абсолютного пути внутрь установленного пакета, а голый `version`
+сообщает редакцию комплекта ЭТОГО ПАКЕТА, поэтому устаревший shim и только что написанный
+печатают ровно одну и ту же строку. Доказывайте то, что действительно может различаться: что в
+каждом репозитории есть сгенерированный shim и что он ведёт в пакет, установленный сейчас:
 
 ```bash
-bash -n "$CORP_SYSTEM_STORE_ROOT/tools/sync-submodules.sh"
-bash -n "$CORP_SYSTEM_STORE_ROOT/tools/repository-state.sh"
-bash "$KV" identify "$CORP_SYSTEM_STORE_ROOT"/tools/*.sh "$CORP_SYSTEM_STORE_ROOT"/tools/*.mjs
-git -C "$CORP_SYSTEM_STORE_ROOT" status --short
+installed_bin=$(node -e 'console.log(require.resolve("@fresh-fx59/serpens-sdd/bin/serpens-sdd.mjs"))' 2>/dev/null \
+  || readlink -f "$(command -v serpens-sdd)")
+echo "bin установленного пакета: $installed_bin"
+{ echo "$SERPENS_SYSTEM_STORE_ROOT"
+  git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule foreach --quiet 'echo "$toplevel/$sm_path"'
+} | while IFS= read -r repo; do
+  shim="$repo/tools/serpens-sdd"
+  grep -q 'serpens-sdd shim' "$shim" 2>/dev/null || { echo "✗ $repo: нет сгенерированного shim — повторите этап 3/5"; continue; }
+  grep -qF "$installed_bin" "$shim" || { echo "✗ $repo: shim ведёт в ДРУГУЮ установку, не в $installed_bin"; continue; }
+  printf '✓ %s -> ' "$repo"; "$shim" version
+done
+git -C "$SERPENS_SYSTEM_STORE_ROOT" status --short
 ```
 
-Каждая строка с меткой теперь должна быть `pristine <новая редакция>`.
+Каждый репозиторий должен напечатать `✓` и новую редакцию.
 
-## 4. Обновите инструменты в каждом подмодуле
+Что это НЕ доказывает, прямым текстом: когда пакет обновляется на месте (`npm i -g` пишет по тому
+же пути bin), shim прошлой редакции побайтово совпадает с новым и корректно ведёт в обновлённый
+пакет. В этом случае различать нечего — и не нужно: проверка выше настолько строга, насколько
+позволяет ситуация. Она ловит то, что действительно ломается: отсутствующий shim, написанный
+руками файл в `tools/serpens-sdd` и shim, оставшийся указывать на переехавшую или удалённую
+установку.
 
-В каждом подключённом репозитории лежат семь инструментов из этапа 5 установки,
-пункт 4. Копируйте их из только что обновлённого `tools/` хранилища, по одному
-репозиторию за раз, пропуская те, что не прошли проверку на этапе 1:
-
-```bash
-git -C "$CORP_SYSTEM_STORE_ROOT" submodule foreach --quiet 'echo "$toplevel/$sm_path"' \
-  | while IFS= read -r repo; do
-      test -d "$repo/tools" || continue
-      install -m 0755 "$CORP_SYSTEM_STORE_ROOT/tools/repository-state.sh"        "$repo/tools/"
-      install -m 0755 "$CORP_SYSTEM_STORE_ROOT/tools/verify-docs.sh"             "$repo/tools/"
-      install -m 0755 "$CORP_SYSTEM_STORE_ROOT/tools/check-openspec-root.sh"     "$repo/tools/"
-      install -m 0755 "$CORP_SYSTEM_STORE_ROOT/tools/check-git-naming.sh"        "$repo/tools/"
-      install -m 0644 "$CORP_SYSTEM_STORE_ROOT/tools/corp-lint.mjs"              "$repo/tools/"
-      install -m 0644 "$CORP_SYSTEM_STORE_ROOT/tools/gen-index.mjs"              "$repo/tools/"
-      install -m 0644 "$CORP_SYSTEM_STORE_ROOT/tools/check-contract-split-brain.mjs" "$repo/tools/"
-      bash -n "$repo/tools/verify-docs.sh"
-      bash "$repo/tools/verify-docs.sh"
-    done
-```
-
-`aggregate-index.mjs`, `index-all.sh` и `sync-submodules.sh` живут только в
-хранилище. Репозиторий, который их заводит, начинает вести второй список
-репозиториев.
-
-Если в репозитории `verify-docs.sh` покраснел на содержимом, которое раньше было
-зелёным, значит новая проверка ужесточила лимит. Перепишите содержимое. Не
-ослабляйте лимит и не удаляйте проверку ради завершения обновления.
-
-## 4a. Новые файлы репозитория, которых требует эта редакция
+## 4. Новые файлы репозитория, которых требует эта редакция
 
 Два файла, которые SETUP теперь ставит в каждый репозиторий, в старых редакциях не
-существовали. Обновление, пропустившее их, оставляет рабочие репозитории недонастроенными:
+существовали, и обновление, пропустившее их, оставляет рабочие репозитории
+недонастроенными. `serpens-sdd init --only 5` (часть того же повторного запуска, что и
+этап 3 выше) пишет оба, но проверьте репозиторий, чей `docs/testing-stack.md` или
+`.gitignore` старше этого этапа и с тех пор не менялся:
 
 ```bash
-for repo in $(git -C "$CORP_SYSTEM_STORE_ROOT" submodule --quiet foreach 'echo $sm_path'); do
-  d="$CORP_SYSTEM_STORE_ROOT/$repo"
-  mkdir -p "$d/docs" "$d/templates"
-  install -m 0644 "$CORP_SDD_ROOT/templates/testing-stack.md" "$d/templates/"
-  install -m 0644 "$CORP_SDD_ROOT/templates/research.md"      "$d/templates/"
-  install -m 0644 "$CORP_SDD_ROOT/templates/adr.md"           "$d/templates/"
-  test -f "$d/docs/testing-stack.md" || cp "$CORP_SDD_ROOT/templates/testing-stack.md" "$d/docs/testing-stack.md"
-  test -f "$d/.gitignore" || install -m 0644 "$CORP_SDD_ROOT/system-store-template/.gitignore" "$d/.gitignore"
+for repo in $(git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule --quiet foreach 'echo $sm_path'); do
+  d="$SERPENS_SYSTEM_STORE_ROOT/$repo"
+  test -f "$d/docs/testing-stack.md" || echo "MISSING docs/testing-stack.md: $d"
+  test -f "$d/.gitignore" || echo "MISSING .gitignore: $d"
 done
 ```
 
-`docs/testing-stack.md` — это то, что читают `corp-tdd` и `corp-debugging` вместо названия
-технологии; без него оба навыка остаются без стека, а скопированный файл — пустой шаблон,
-который команда обязана заполнить (SETUP, шаг 6a). Никогда не перезаписывай уже заполненный.
-`.gitignore` — это шаг 6b SETUP: untracked-файлы не блокируют gate, но игнорируемый файл
-нельзя и случайно закоммитить; существующий `.gitignore` дополняй, а не заменяй.
+`docs/testing-stack.md` — это то, что читают `spns-tdd`, `spns-debugging`, `spns-test-plan` и
+`spns-autotest` вместо названия технологии; без него четыре команды остаются без стека, и с
+этой редакции `verify-docs` ПАДАЕТ на его отсутствии в онбординженном репозитории, а не молча
+проходит. Никогда не перезаписывайте файл, в котором уже есть реальное содержимое, —
+установщик пишет его, только если файла ещё нет.
+
+Существующий файл при этом ОБНОВЛЯЕТСЯ на месте: этап 6 дописывает каждый обязательный раздел
+и каждую строку-слот, которые добавила эта редакция и которых в файле нет, дословно из шаблона
+и потому по-прежнему помеченными `UNFILLED`, и не меняет ничего уже заполненного. Так файл,
+заполненный в старой редакции, получает раздел `Ручной доступ для тестирования` незаполненным —
+`verify-docs` затем назовёт эти слоты, и это и есть смысл: такие факты знает только команда.
+Примените это через `serpens-sdd init --only 6`, затем ответьте на новые слоты (`none` там, где
+у репозитория такой поверхности нет). `.gitignore` — это шаг 6b SETUP:
+untracked-файлы никогда не блокируют gate, но и игнорируемый файл нельзя случайно
+закоммитить — недостающий добавляйте слиянием из `system-store-template/.gitignore`,
+а не заменой существующего файла.
 
 ## 5. Команды, навыки и обязательная подстановка плейсхолдеров
 
-Скопируйте `skills/corp-*` в проектный каталог навыков из `port-facts.md`, а
-`commands/corp-*.md` — в записанный каталог команд. Меняйте только оболочку порта,
-frontmatter и токен `{{args}}`, ровно как при установке.
+`serpens-sdd init --only 6` копирует `skills/spns-*` в проектный каталог навыков,
+записанный в `port-facts.md`, а `commands/spns-*.md` — в записанный каталог команд,
+меняя только оболочку порта, frontmatter и токен `{{args}}`, ровно как при установке.
 
-Свежий файл команды приходит с **неподставленным** токеном. Копирование отменяет
-подстановку, сделанную при установке, поэтому повторная подстановка обязательна:
-замените каждый токен `<openspec>` подставленным вызовом CLI из `port-facts.md`.
-`corp-spec` вызывает `new change` и `instructions` по артефактам, `corp-plan` —
-`instructions design` и `instructions tasks`, `corp-implement` — `instructions apply`,
-`corp-review` — `validate` и `status`, `corp-archive` — `archive`.
+Свежий файл команды приходит с **неподставленными** плейсхолдерами. Копирование
+отменяет подстановку, сделанную при установке, поэтому повторная подстановка
+обязательна, а не опциональна: `<serpens-sdd> init` заменяет каждый токен `<openspec>`
+подставленным вызовом CLI из `port-facts.md`, а каждый токен `<serpens-sdd>` — вызовом
+shim из этапа 3/5: по умолчанию это `"$(git rev-parse --show-toplevel)"/tools/serpens-sdd`, та же
+строка, что и в сгенерированном `lefthook.yml`; переопределяется через `serpens_sdd.invocation`.
+Голый `serpens-sdd` — не допустимая подстановка: он есть в PATH только при глобальной установке. `spns-spec` должен вызывать `new change` и `instructions` по
+артефактам, `spns-plan` — `instructions design`/`instructions tasks`,
+`spns-implement` — `instructions apply`, `spns-review` — `validate` и `status`,
+`spns-archive` — `archive`.
 
 ```bash
-grep -rn '<openspec>' "<installed-command-dir>" && exit 1 || true
+grep -rnE '<openspec>|<serpens-sdd>' "<installed-command-dir>" "<installed-skill-dir>" && exit 1 || true
 ```
 
 Это и есть проверка: непустой вывод означает, что обновление оставило команду,
@@ -233,11 +302,11 @@ grep -rn '<openspec>' "<installed-command-dir>" && exit 1 || true
 1. сравните установленную копию с копией из комплекта по тому же пути:
 
    ```bash
-   diff -u "<installed-file>" "$CORP_SDD_ROOT/<kit-path-from-identify>"
+   diff -u "<installed-file>" "<kit-root>/<kit-path-from-identify>"
    ```
 
    Для нетронутого файла `identify` печатает путь в комплекте; для MODIFIED
-   возьмите тот же относительный путь внутри `$CORP_SDD_ROOT`.
+   возьмите тот же относительный путь внутри `<kit-root>`.
 2. решите **оставить** или **заменить** вместе с названным человеком — владельцем
    харнесса либо автором локальной правки, если Git его называет:
 
@@ -272,11 +341,11 @@ grep -rn '<openspec>' "<installed-command-dir>" && exit 1 || true
 хранилище они создают вторую, не связанную историю, и это стоит не повтора, а
 переделки.
 
-## 8. Заново докажите защиты и выполните одну реальную команду
+## 8. Заново докажите защиты, затем выполните одну реальную команду
 
 Новые байты инструментов означают, что защиты снова не доказаны. Повторите этап 8
 установки на временных плохих данных — в хранилище и в одном показательном
-репозитории:
+подмодуле:
 
 - неверный OpenSpec-корень должен завершиться ошибкой;
 - повторённая форма общего контракта должна упасть на split-brain проверке;
@@ -288,26 +357,34 @@ grep -rn '<openspec>' "<installed-command-dir>" && exit 1 || true
 `lefthook.yml`. Затем докажите повторяемость и работу каталога:
 
 ```bash
-bash "$CORP_SYSTEM_STORE_ROOT/tools/sync-submodules.sh" \
-  --inventory "$CORP_SYSTEM_STORE_ROOT/project-repositories.json" \
-  --store-root "$CORP_SYSTEM_STORE_ROOT"
-git -C "$CORP_SYSTEM_STORE_ROOT" diff -- .gitmodules   # должно быть пусто
-node "$CORP_SYSTEM_STORE_ROOT/tools/aggregate-index.mjs" --strict "$CORP_SYSTEM_STORE_ROOT"
-git -C "$CORP_SYSTEM_STORE_ROOT" submodule status
+<serpens-sdd> sync-submodules \
+  --inventory "$SERPENS_SYSTEM_STORE_ROOT/project-repositories.json" \
+  --store-root "$SERPENS_SYSTEM_STORE_ROOT"
+git -C "$SERPENS_SYSTEM_STORE_ROOT" diff -- .gitmodules   # должно быть пусто
+<serpens-sdd> catalog --strict "$SERPENS_SYSTEM_STORE_ROOT"
+git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule status
 ```
 
-Файлы на диске — ещё не выполненное обновление. Вызовите одну Corp-команду в самом
-порту: запустите `corp-spec` на выдуманном тикете в одном подключённом
+Файлы на диске — ещё не выполненное обновление. Вызовите одну Serpens-команду в самом
+порту: запустите `spns-spec` на выдуманном тикете в одном подключённом
 репозитории, убедитесь, что дело дошло до интервью и появился
 `openspec/changes/<id>/proposal.md`, затем удалите ветку и папку изменения.
 Обновление, в котором ни одна команда ни разу не отработала в реальном порту, не
 доказано, что бы ни печатал `identify`.
 
-Коммитьте каждый репозиторий отдельно, по одному коммиту, только скопированные
-файлы:
+Коммитьте каждый репозиторий отдельно, по одному коммиту, только те файлы, которые обновление
+действительно изменило. С этой редакции в `tools/` лежит только сгенерированный shim, а его байты
+при обновлении пакета на месте не меняются, поэтому в обновлённом репозитории часто НЕЧЕГО
+коммитить — это успех, а не ошибка, так что никогда не цепляйте `git commit` через `&&` на этом
+шаге:
 
 ```bash
-git -C "<repo>" add tools/ && git -C "<repo>" commit -m "chore(<TICKET>): corp-sdd tools -> <new edition>"
+git -C "<repo>" add -A tools/
+if git -C "<repo>" diff --cached --quiet; then
+  echo "в <repo> коммитить нечего: shim уже актуален (так и должно быть)"
+else
+  git -C "<repo>" commit -m "chore(<TICKET>): serpens-sdd shim -> <new edition>"
+fi
 ```
 
 То же сделайте в хранилище и там, где порт держит установленные команды и навыки
@@ -315,16 +392,25 @@ git -C "<repo>" add tools/ && git -C "<repo>" commit -m "chore(<TICKET>): corp-s
 
 ## 9. Откат
 
-Копирование в каждом репозитории — ровно один коммит, поэтому откат это один
-revert на репозиторий и ничего больше:
+Обновление репозитория — это НЕ БОЛЬШЕ одного коммита, а часто и ноль: сгенерированный shim
+обычно побайтово одинаков между редакциями (см. раздел 3). Поэтому откат делается по репозиториям,
+и первый шаг — узнать, есть ли что откатывать:
 
 ```bash
-git -C "<repo>" revert --no-edit <upgrade-commit>
-bash "<repo>/tools/verify-docs.sh"
+git -C "<repo>" log --oneline -1 -- tools/    # коммит обновления, если он тут вообще появился
 ```
 
-Хранилище и репозитории откатываются независимо и в любом порядке: инструменты не
-читают друг друга. Откат хранилища не меняет указатель подмодуля, потому что этап 4
+Если коммит есть — откатите ровно его. Если его нет, в репозитории откатывать нечего: у него тот
+же shim, что написала прошлая редакция, и откат означает переустановку прежней версии пакета,
+чтобы цель shim разрешалась в неё:
+
+```bash
+git -C "<repo>" revert --no-edit <upgrade-commit>   # только если log выше его назвал
+"<repo>/tools/serpens-sdd" verify-docs
+```
+
+Хранилище и спицы откатываются независимо и в любом порядке: shim'ы не читают
+друг друга. Откат хранилища не меняет указатель подмодуля, потому что этап 4
 коммитил внутри подмодуля, а не в хранилище.
 
 Откат команд и навыков — это установка `commands/` и `skills/` предыдущего
@@ -340,19 +426,21 @@ Git-репозиторий, поэтому держите предыдущий �
 Закрывайте обновление, только когда верна каждая строка:
 
 - [ ] опись pristine / MODIFIED / UNSTAMPED, снятая до обновления, лежит в отчёте;
-- [ ] `kit-version.sh verify` на новом комплекте зелёный до любого копирования;
+- [ ] `serpens-sdd version` сообщает новую редакцию до любого копирования;
 - [ ] каждый репозиторий проверен через `prepare-base` до копирования; пропущенные
       названы вместе с упавшей проверкой и её выводом;
-- [ ] `tools/` хранилища и `tools/` каждого репозитория дают `identify` со статусом
-      pristine новой редакции;
+- [ ] в каждом репозитории есть сгенерированный `tools/serpens-sdd`, цель `exec` которого —
+      установленный сейчас пакет, и каждый печатает новую редакцию (проверка из раздела 3,
+      а не голый `version`, который не может упасть);
 - [ ] по каждому файлу MODIFIED или UNSTAMPED записано решение «оставить или
       заменить» и назван тот, кто его принял;
-- [ ] команды и навыки переустановлены, `grep` доказывает, что плейсхолдеров
-      `<openspec>` не осталось;
+- [ ] команды и навыки переустановлены, `grep` доказывает, что не осталось ни
+      токена `<openspec>`, ни токена `<serpens-sdd>`;
 - [ ] `port-facts.md`, `project-repositories.json`, `.gitmodules` и все деревья
       `openspec/` обновлением не изменены;
 - [ ] негативные тесты этапа 8 установки повторены и красные там, где должны быть;
-- [ ] `sync-submodules.sh` отработал чисто, `aggregate-index --strict` зелёный;
-- [ ] одна Corp-команда отработала целиком в порту после обновления;
-- [ ] по одному коммиту на репозиторий, каждый откатывается сам по себе, SHA
-      записаны в отчёте.
+- [ ] `sync-submodules` отработал чисто, `catalog --strict` зелёный;
+- [ ] одна Serpens-команда отработала целиком в порту после обновления;
+- [ ] не больше одного коммита на репозиторий, каждый откатывается сам по себе, SHA
+      записаны в отчёте — и каждый репозиторий, в котором законно нечего было
+      коммитить, отмечен как такой, с проверкой shim выше в качестве доказательства.

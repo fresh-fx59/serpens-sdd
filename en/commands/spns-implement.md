@@ -1,0 +1,41 @@
+---
+description: Implement the current change task-by-task under TDD discipline (dev flow)
+serpens-version: 2026-09-10.1
+---
+Implement change {{args}}.
+`{{args}}` is the `<change-id>`; `<openspec>` is the OpenSpec CLI invocation setup resolved.
+Discipline: follow skills spns-tdd (all coding), spns-verification (all done-claims),
+spns-debugging (any unexpected failure), spns-drill-down (any fact about the system).
+0. Set `REPO_ROOT="$(git rev-parse --show-toplevel)"`. Run
+   `<serpens-sdd> state assert-change <TICKET> --checkout --allow-dirty`.
+   It switches to the story branch if you are elsewhere and it exists; it never creates one.
+   Stop on the wrong branch, missing upstream, or divergence. Then run
+   `<openspec> instructions apply --change <change-id> --json` to read the machine's task state —
+   `state`, `progress`, `tasks`, `contextFiles`. A `blocked` state means an artifact is missing:
+   stop and run `spns-plan`. Use it for state only; the Serpens TDD cycle below is the
+   implementation authority, and no OpenSpec guidance overrides it.
+1. Read tasks.md state header + research.md FIRST — resume, never re-derive.
+2. If design.md/tasks.md are missing or stale (index digest changed): regenerate them
+   now against current code (plans are disposable, specs are durable).
+3. Per task: write the failing test from the spec scenario (fast unit tier; slow
+   integration tier only at task boundaries) → implement → run → record evidence in
+   tasks.md → tick the checkbox → overwrite the state header. Do NOT commit per task.
+4. On spec/code mismatch STOP and classify: (a) spec incomplete, or an acceptance scenario no longer
+   observable as written → draft amendment to the delta on this branch, run
+   `<openspec> validate <change-id> --type change --strict --json` on the amended delta and fix
+   until `"valid": true`, notify analyst via tracker, wait; (b) code surprising but
+   spec right → regenerate tasks, note in research.md; (c) unimplementable → halt, escalate.
+5. After every file write under openspec/ or docs/, run
+   `<serpens-sdd> verify-docs`.
+6. COMMIT THE WHOLE CHANGE, once, when every box is ticked — not per task. The operator never
+   runs git for you, and an implementation that ends with uncommitted work is not finished.
+   Stage exactly the files this change produced, BY PATH (`git add <path> …`). Never
+   `git add -A`, `git add .` or `git commit -a`: the repository legitimately holds local-only
+   settings, credential and scratch files that must never be committed, and an untracked file you
+   did not create is not yours to stage. A file you created is untracked until you add it —
+   adding it is part of writing it. Commit with `feat(<TICKET>): <text>` (or `fix(`;
+   `<serpens-sdd> git-naming` enforces the type), push to `origin/feature/<TICKET>`, open or update
+   the PR, and paste `git log --oneline -1` plus `git status --short` as evidence.
+7. Done = all boxes ticked + full test suite green + verify-docs green + the work committed and
+   pushed. Never claim
+   done without pasted evidence of the last test run.

@@ -41,4 +41,4 @@ See the schema comment block near the top of `deck-template.html`'s renderer.
 
 ## Provenance
 Current claims must trace to `docs/SETUP.md`, `docs/OPERATIONS.md`, command bodies,
-and tested scripts. Last workflow update: 2026-08-20.
+and tested commands. Last workflow update: 2026-08-20.

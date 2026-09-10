@@ -6,7 +6,7 @@ Start inside the selected repository, not at the system-store root:
 
 ```bash
 export REPO_ROOT="$(git rev-parse --show-toplevel)"
-bash "$REPO_ROOT/tools/repository-state.sh" inspect
+<serpens-sdd> state inspect
 ```
 
 Before a new story, run `prepare-base`, create `feature/<TICKET>` from the reported
@@ -16,14 +16,14 @@ local edit. A non-zero result is a hard stop.
 
 The repository-state tool never resets, cleans, rebases, deletes branches, changes
 an unknown dirty tree, or hides local commits. It resolves the base from
-`CORP_BASE_BRANCH`, local `corp.baseBranch`, the parent store's `.gitmodules`,
+`SERPENS_BASE_BRANCH`, local `serpens.baseBranch`, the parent store's `.gitmodules`,
 remote `develop`, then the remote default.
 
-`repository-state.sh inspect` prints `dirty=` and `untracked=` as two separate facts, and only
+`<serpens-sdd> state inspect` prints `dirty=` and `untracked=` as two separate facts, and only
 the first one gates anything. `dirty` counts uncommitted changes to TRACKED files
 (`--porcelain --untracked-files=no --ignore-submodules=untracked`). Untracked files — local
 settings, credential files, build output — are reported once as a warning and block nothing, so
-a working repository never has to be tidied before a corp-* command. Inside the store, a
+a working repository never has to be tidied before a spns-* command. Inside the store, a
 submodule whose own tracked files changed is named in the failure ("uncommitted changes to
 TRACKED files inside submodule(s): …") rather than blamed on the store; an untracked file inside
 a submodule leaves the store clean.
@@ -31,44 +31,44 @@ a submodule leaves the store clean.
 ## Which edition am I running?
 
 The kit is versioned. `VERSION` holds the edition, every shipped command, skill and
-tool carries a matching `corp-version:` stamp, and `MANIFEST.sha256` pins their exact
+tool carries a matching `serpens-version:` stamp, and `MANIFEST.sha256` pins their exact
 bytes. To tell a kit file apart from a locally changed copy:
 
 ```bash
-KV="$CORP_SDD_ROOT/scripts/tools/kit-version.sh"
-bash "$KV" show                       # the edition this kit is
-bash "$KV" list                       # every stamped file and its stamp
-bash "$KV" check                      # fail if any stamp differs from VERSION
-bash "$KV" verify                     # nothing changed since that edition
-bash "$KV" identify <installed-file>  # pristine / MODIFIED / UNSTAMPED
+KV="<serpens-sdd> version"
+$KV show      --root "$SERPENS_SDD_ROOT"                     # the edition this kit is
+$KV list      --root "$SERPENS_SDD_ROOT"                     # every stamped file and its stamp
+$KV check     --root "$SERPENS_SDD_ROOT"                     # fail if any stamp differs from VERSION
+$KV verify    --root "$SERPENS_SDD_ROOT"                     # nothing changed since that edition
+$KV identify  --root "$SERPENS_SDD_ROOT" <installed-file>    # pristine / MODIFIED / UNSTAMPED
 ```
 
-Run it from the unpacked kit: it reads `VERSION` and `MANIFEST.sha256` beside itself,
-so it is not one of the tools installed into a repository (`--root <kit>` points it at
-another unpacked kit). `identify` hashes the file you name, so it works on an installed
+`--root <kit-root>` is required in every mode: the tool no longer lives inside the kit it
+reports on, so it reads `VERSION` and `MANIFEST.sha256` from wherever `--root` points, not
+from beside itself. `identify` hashes the file you name, so it works on an installed
 copy at any path — an agent-home command directory included. `UNSTAMPED` means the copy
 predates versioning or is your own; `MODIFIED` means it carries a stamp but not those bytes.
 
 ## Workflow
 
-1. `corp-spec`: inspect live repositories, then place yourself before creating anything —
+1. `spns-spec`: inspect live repositories, then place yourself before creating anything —
    no tracker key means no branch (ask once; never invent one), and an existing
    `feature/<TICKET>`, checked out or not, is resumed rather than recreated. Only a branch
    that exists nowhere goes through `prepare-base`. Then create the change and ask the
    OpenSpec CLI for `proposal` and `specs`, one artifact at a time.
-2. `corp-plan`: assert the story branch and create current design and tasks.
-3. `corp-implement`: assert the branch, enter OpenSpec apply, then use Corp TDD.
-4. `corp-review`: inspect state, then run `<openspec> validate <change-id> --type change --strict
+2. `spns-plan`: assert the story branch and create current design and tasks.
+3. `spns-implement`: assert the branch, enter OpenSpec apply, then use Serpens TDD.
+4. `spns-review`: inspect state, then run `<openspec> validate <change-id> --type change --strict
    --json` and `<openspec> status --change <change-id> --json` before human review. There is no
    `verify` subcommand in OpenSpec 1.10.
-5. `corp-test-plan` and `corp-autotest`: derive checks from approved scenarios.
-   `corp-test-plan` is **black-box**: the request or event to send, the expected response, and
+5. `spns-test-plan` and `spns-autotest`: derive checks from approved scenarios.
+   `spns-test-plan` is **black-box**: the request or event to send, the expected response, and
    the expected stored rows on the dev stand — posted as a comment on the
-   same ticket, never as a separate test task. `corp-autotest` is the in-code layer.
-6. After merge, `corp-archive`: place the archive commit, then run OpenSpec archive.
+   same ticket, never as a separate test task. `spns-autotest` is the in-code layer.
+6. After merge, `spns-archive`: place the archive commit, then run OpenSpec archive.
    With no flag it asks you which of three placements to use and never picks for you; option (1)
    cuts a fresh `feature/<TICKET>` from the prepared base — no suffix, because
-   `check-git-naming.sh` accepts `feature/ABCD-1234` and nothing else, so a suffixed branch fails
+   `<serpens-sdd> git-naming` accepts `feature/ABCD-1234` and nothing else, so a suffixed branch fails
    the pre-push guard. `--branch <name>` names that branch; `--here` archives on the current
    branch.
    Every mode is gated by `assert-archivable`, which requires a clean tree and a
@@ -84,7 +84,7 @@ tool is available; otherwise update the same normalized JSON manually. Then run:
 
 ```bash
 export STORE_ROOT="$(git rev-parse --show-toplevel)"
-bash "$STORE_ROOT/tools/sync-submodules.sh" \
+<serpens-sdd> sync-submodules \
   --inventory "$STORE_ROOT/project-repositories.json" --store-root "$STORE_ROOT"
 git -C "$STORE_ROOT" submodule status
 ```
@@ -99,7 +99,7 @@ To refresh registered content after reviewing local state:
 git -C "$STORE_ROOT" submodule foreach --recursive 'git fetch --prune origin'
 ```
 
-Use each repository's `repository-state.sh prepare-base` to fast-forward safely.
+Use each repository's `<serpens-sdd> state prepare-base` to fast-forward safely.
 Do not use bulk checkout or reset commands.
 
 ## Cross-repository changes
@@ -113,7 +113,7 @@ the store contract. A contract change stops all dependent work.
 Regenerate the central catalog after repository indexes are current:
 
 ```bash
-node "$STORE_ROOT/tools/aggregate-index.mjs" --strict "$STORE_ROOT"
+<serpens-sdd> catalog --strict "$STORE_ROOT"
 ```
 
 ## Recovery table
@@ -134,8 +134,8 @@ Zoekt is optional. The workflow works without it. On its dedicated host, install
 `zoekt-git-index` and Universal Ctags, then run:
 
 ```bash
-bash "$STORE_ROOT/tools/index-all.sh" --store-root "$STORE_ROOT" \
-  --index-dir "${CORP_ZOEKT_INDEX_DIR:-$STORE_ROOT/.cache/zoekt/index}"
+<serpens-sdd> index-code --store-root "$STORE_ROOT" \
+  --index-dir "${SERPENS_ZOEKT_INDEX_DIR:-$STORE_ROOT/.cache/zoekt/index}"
 ```
 
 The tool reads `.gitmodules`, validates every path before indexing, requires real
@@ -193,8 +193,8 @@ Free text: what one thing should we fix?
 An existing workspace is upgraded by [`docs/UPGRADE.md`](UPGRADE.md), not by
 repeating the install. Read it before pulling the new kit.
 
-The short version: inventory every installed file with `kit-version.sh identify`
-first, gate each repository with `repository-state.sh prepare-base`, refresh the
+The short version: inventory every installed file with `<serpens-sdd> version identify --root <kit>`
+first, gate each repository with `<serpens-sdd> state prepare-base`, refresh the
 store's `tools/` **and** every spoke's `tools/`, reinstall commands and skills and
 re-resolve every `<openspec>` token from `port-facts.md`, stop on any
 `MODIFIED` copy instead of overwriting it, re-run the negative tests, and commit

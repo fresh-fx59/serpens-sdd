@@ -1,4 +1,4 @@
-# Corp SDD flow — schema
+# Serpens SDD flow — schema
 
 > The one-screen view. The full workflow reference, with the per-command table, is
 > [`FLOW.md`](FLOW.md), and the wide per-step table is [`FLOW-TABLE.md`](FLOW-TABLE.md);
@@ -9,7 +9,7 @@
 Story / request
   │
   ▼
-1. SPECIFY  — Analyst, corp-spec
+1. SPECIFY  — Analyst, spns-spec
   input:   intent only, or a story + wiki + living specification + current code
   first:   when given intent only, triage it with the user before specification
   output:  proposal + delta specification + research + branch + commit + pull request
@@ -17,19 +17,19 @@ Story / request
            in every affected repository
   │
   ▼
-2. PLAN  — Developer, corp-plan
+2. PLAN  — Developer, spns-plan
   input:   approved delta + current code
   output:  design.md (<200 lines) + risk-first tasks.md, committed by the command
   gate:    checks pass; developer approves the plan
   │
   ▼
-3. IMPLEMENT  — Developer, corp-implement
+3. IMPLEMENT  — Developer, spns-implement
   loop:    failing scenario test → smallest change → fast tests → refactor
   output:  code + tests + checked tasks + test evidence, in ONE commit at the end
   gate:    all tasks complete; full suite and final checks pass; work pushed
   │
   ▼
-4. REVIEW  — Reviewer, corp-review
+4. REVIEW  — Reviewer, spns-review
   checks:  coverage → spec fit → test honesty → correctness → scripted checks
   output:  findings with severity, file:line, and fix; or clean result
   gate:    blockers fixed and verification re-run
@@ -45,7 +45,7 @@ Story / request
          and asks the user: amend the delta, or file a defect
   └──────────────┬──────────────┘
                  ▼
-7. ARCHIVE AFTER MERGE  — Developer or release owner, corp-archive
+7. ARCHIVE AFTER MERGE  — Developer or release owner, spns-archive
   input:   merged pull request + final evidence
   output:  living specs + ADR + index, in a `docs(<TICKET>): archive …` commit
   gate:    merge is complete; assert-archivable passes; records are retained
@@ -57,10 +57,10 @@ Story / request
 - A completed claim needs fresh evidence.
 - A mismatch between specification and code stops work until it is classified.
 - Documentation changes run the repository verification checks: `verify-docs.sh`, which runs the
-  index check, `corp-lint.mjs`, and the contract-split check — the last one reading each store's
+  index check, `serpens-lint.mjs`, and the contract-split check — the last one reading each store's
   living specs AND the deltas and `store-contract.md` of its active changes, so it also covers the
   cross-repo window before the contract is archived.
-- `corp-lint.mjs` also refuses an unfilled `port-facts.md`: a `P`-row still holding the template
+- `serpens-lint.mjs` also refuses an unfilled `port-facts.md`: a `P`-row still holding the template
   placeholder `...`, or the template header `<port name + version> (probed YYYY-MM-DD)`, is an
   error, because the whole install derives from that file.
 - Every asserting mode of `repository-state.sh` refuses a repository that does not own its own

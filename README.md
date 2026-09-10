@@ -1,92 +1,60 @@
-# Corporate SDD with AI agents
+# Serpens SDD
 
-A starter kit for spec-driven development across corporate repositories. It combines
-OpenSpec lifecycle commands with deterministic repository, branch, documentation and
-contract checks. The kit's own scripts ship with zero npm dependencies, for restricted
-networks — but it drives the OpenSpec CLI, and that is installed from npm.
+Spec-driven development across corporate repositories, for teams whose agent CLI is
+whatever their employer approved and whose network is restricted. It wraps
+[OpenSpec](https://github.com/Fission-AI/OpenSpec)'s lifecycle with deterministic
+repository, branch, documentation and contract gates: the rules you were hoping the model
+would remember become checks that run.
 
-## Quick start: the agent installs it
+> Renamed from **Corp SDD** on 2026-09-09. Old clone URLs redirect; the old Pages URL does
+> not. See [`docs/RENAME.md`](docs/RENAME.md).
 
-You do not install this kit by hand. `en/docs/SETUP.md` is written as a task **for
-an agent** — staged, with a gate at every step and a hard rule never to delete,
-reset, clean, rebase or force-checkout anything it finds. You clone the repo and
-hand that file to your agent.
+## Install
 
 ```bash
-git clone https://github.com/fresh-fx59/corp-sdd.git
-cd corp-sdd
+npm i -g @fresh-fx59/serpens-sdd
+serpens-sdd version          # prints the kit edition
+serpens-sdd init             # the staged installer, one gate per stage
 ```
 
-Then, in Claude Code, Codex, or your corporate agent CLI, from that directory:
+`init` is the mechanical half: it resolves your agent port, creates the system store,
+onboards repositories as submodules, installs the seven commands and six skills into your
+agent's own config directory, wires the pre-commit gate, and writes an evidence file
+recording exactly what it proved. It **never** deletes, resets, cleans, rebases or
+force-checkouts anything it finds, and it stops at the first failed gate. Add `--dry-run`
+to the same invocation and it prints every stage's plan — commands and file writes — while
+touching nothing.
+
+What `init` cannot prove, it refuses to guess: your tracker, your forge, the MCP tool
+names, and your testing stack are written out as `UNFILLED` facts for a human to fill in,
+and `serpens-sdd verify-docs` stays red until they are.
+
+Requires `git` >= 2.13, `node` >= 18, `lefthook`, and the pinned OpenSpec CLI. That last
+one matters: the package is **`@fission-ai/openspec`** — the bare name `openspec` on the
+public registry is an unrelated empty `0.0.0` placeholder that installs nothing usable.
+`ctags` (Universal) and Zoekt are optional; without them you lose code search and nothing
+else. On a restricted network, mirror `@fission-ai/openspec` internally and record the
+resolved registry in your handover.
+
+## Or read the runbook first
+
+`docs/SETUP.md` is not a manual — it is a **task written for an agent**, staged, with a gate
+at every step. Hand it to your agent CLI and it performs the install:
 
 ```text
 Read en/docs/SETUP.md and execute it as your task. Stop at every failed gate and
 show me the output. Do not skip stage 0.
 ```
 
-Have these ready — stage 0 asks for them and stops if they are missing:
+Stage 0 asks for these and stops if any is missing:
 
 | Input | Example |
 |---|---|
 | Project id | `PROJ` |
-| Agent port name | the agent CLI you run, and its config dir |
+| Agent port name | the agent CLI you run — 40 are supported; the registry is `ports/*.json` inside the package |
 | Pinned OpenSpec version | for `@fission-ai/openspec` |
 | System-store remote URL | an empty Git repository you own |
 | Approved base branch | `develop` or `main` |
-
-And this toolchain — stage 0 proves each one before it writes anything:
-`git` >= 2.13, `node` >= 18, `lefthook`, and `npx @fission-ai/openspec@<pinned>`.
-The bare `openspec` name on the public registry is an unrelated empty `0.0.0`
-placeholder, so the scoped name matters. `ctags` + Zoekt are optional; without
-them you lose code search and nothing else.
-
-The kit's own scripts have **zero npm dependencies**, which is the point on a
-restricted network — but OpenSpec itself comes from npm and must be mirrored.
-
-## Kick the tyres before installing anything
-
-If you want to see the approach work before you give an agent a runbook, one
-script needs nothing but `git` and `awk`. `repository-state.sh` is the
-deterministic gate that opens every command in this kit:
-
-```bash
-bash en/scripts/tools/repository-state.sh inspect
-```
-
-```text
-repo=/home/you/corp-sdd
-openspec_root=NONE
-expected_base=main
-branch=main
-upstream=origin/main
-dirty=0
-untracked=0
-stash_count=0
-ahead=0
-behind=0
-```
-
-Run it inside any repository you already have. It measures the state an agent is
-about to work in instead of assuming it, and it reports rather than repairs:
-
-```bash
-bash en/scripts/tools/repository-state.sh assert-change ABCD-1234
-```
-
-```text
-✗ OpenSpec root is not this repository
-  ↳ resolved root: NONE
-  ↳ every spec written here would land there instead — openspec walks up past .git
-  ↳ onboard this repository (SETUP stage 5: openspec init, then check-openspec-root.sh)
-```
-
-Exit code 1. On a bare clone that refusal is expected and correct — nothing is
-installed yet, so no spec may be written. That is the whole idea: the rules you
-were hoping the model would remember become checks that run.
-
-That is one of eleven scripts, around seven commands and six agent skills that
-wrap [OpenSpec](https://github.com/Fission-AI/OpenSpec). The full flow, which
-installs nothing to read: [`en/docs/FLOW.md`](en/docs/FLOW.md).
 
 ## Start here
 
@@ -105,13 +73,14 @@ The workflow reference installs nothing and comes in three shapes:
 An installation still on the 2026-08-05 layout (`clones/` + `repos.json`) moves onto the
 current one with `docs/MIGRATION-71de101-to-current.md`
 ([English](en/docs/MIGRATION-71de101-to-current.md) ·
-[Русский](ru/docs/MIGRATION-71de101-to-current.md)).
+[Русский](ru/docs/MIGRATION-71de101-to-current.md)) — a historical runbook, still written
+under the old product name.
 
 Setup creates this operational layout:
 
 ```text
 <workspace>/
-├── corp-sdd/                  # this repository
+├── serpens-sdd/               # this repository, if you cloned it
 └── system-store/              # independent Git repository
     ├── .gitmodules
     ├── project-repositories.json
@@ -119,46 +88,70 @@ Setup creates this operational layout:
         └── <project-repository>/
 ```
 
-Project repository bindings come from MCP when available. The same normalized inventory can
-be supplied manually, so MCP is not required for installation. The kit ships six self-contained
-Corp skills; an external Superpowers installation is not required.
+Repository bindings come from MCP when available. The same normalized inventory can be
+supplied manually, so MCP is not required. The kit ships six self-contained `spns-` skills;
+an external Superpowers installation is not required.
+
+## One fact file per repository
+
+The commands name no framework, transport, store or query language of their own. Every one
+of those is a fact about YOUR repository, and they all live in one place —
+`docs/testing-stack.md`, written from `templates/testing-stack.md` at install:
+
+- the FAST and SLOW test tiers and the exact command that runs each (`spns-tdd`);
+- the boundaries only the slow tier catches, and the debugging boundary order
+  (`spns-debugging`);
+- **Manual testing access** — twelve slots naming what a tester can send, produce, query and
+  observe from outside (`spns-test-plan`, `spns-autotest`).
+
+`serpens-sdd verify-docs` schema-validates that file: every required section present, every
+slot answered. `none` is a complete answer where a slot offers one — "this repository has no
+such surface" — and it is not the same as leaving a slot blank. An answer that is the same
+across your whole estate belongs in one document: name it in the `estate-reference` slot and
+answer `inherit` in the slots it covers.
 
 ## Repository contents
 
-- `en/` and `ru/`: equivalent English and Russian kits;
-- `tests/`: the nine acceptance suites — the single home for them — run against both language trees;
-- `docs/index.html`: the published presentation; its source lives in each language kit.
+- `en/` and `ru/`: equivalent English and Russian kits — commands, skills, templates, docs,
+  config examples, slides;
+- `docs/RENAME.md`: what changed in the Corp SDD → Serpens SDD rename, and how to migrate;
+- `docs/index.html`: the published five-minute presentation —
+  <https://fresh-fx59.github.io/serpens-sdd/>;
 - `docs/common-contract.html`: how a cross-repo contract stays single-owner —
-  <https://fresh-fx59.github.io/corp-sdd/common-contract.html>. Includes the two fetch
-  routes a spoke delta needs (change-scoped while the contract change is open,
-  spec-scoped once it is archived), measured against OpenSpec 1.10.0.
+  <https://fresh-fx59.github.io/serpens-sdd/common-contract.html>. Includes the two fetch
+  routes a spoke delta needs (change-scoped while the contract change is open, spec-scoped
+  once it is archived), measured against OpenSpec 1.10.0;
+- `serpens-sdd-starter-en.zip` / `serpens-sdd-starter-ru.zip`: the same kits as archives;
+- `corp-sdd-starter-*.zip`: the OLD archives, frozen at their `2026-08-26.8` content so the
+  pre-rename download links keep resolving. Not maintained; removed one edition from now.
 
-Each language kit keeps three operational documents — `SETUP.md`, `UPGRADE.md` and
-`OPERATIONS.md` — plus the one-off `MIGRATION-71de101-to-current.md` runbook and three
-reference documents that install nothing: `FLOW.md` (the short seven-stage reference),
-`FLOW-TABLE.md` (the wide per-step table) and `FLOW-SCHEMA.md` (the same stages as a diagram).
-Every OpenSpec call in a command is written as the single `<openspec>` token, which setup
-replaces with the CLI invocation it resolved for the detected corporate agent.
+**The executables are not in this repository.** The ten deterministic scripts and the
+`serpens-sdd` CLI ship in the npm package, which is also where their acceptance suites and
+the package's own `npm test` live. Earlier editions copied eleven scripts into `<store>/tools/`
+and into every onboarded repository; that is what the package replaced, and keeping a second
+copy here would be a second source of truth for the same bytes.
 
 Background: [Enterprise spec-driven development with AI agents](https://aiengineerhelper.com/posts/enterprise-spec-driven-development-ai-agents/).
 
 ## Versioning
 
 The kit is versioned as a whole, by **edition**, not per asset. `<kit>/VERSION` holds the
-edition (for example `2026-08-26.7`); every shipped command, skill and tool carries a matching
-`corp-version:` stamp in its own header; `<kit>/MANIFEST.sha256` pins the exact bytes of each
-stamped file for that edition. An installed copy can therefore be identified at any path,
-without this repository.
-
-`scripts/tools/kit-version.sh` is the only reader. Run it from the unpacked kit — it reads
-`VERSION` and `MANIFEST.sha256` beside itself:
+edition; every shipped command and skill carries a matching `serpens-version:` stamp in its
+own header; `<kit>/MANIFEST.sha256` pins the exact bytes of each stamped file for that
+edition. An installed copy can therefore be identified at any path, without this repository:
 
 | Task | Command |
 |---|---|
-| Print the edition | `bash <kit>/scripts/tools/kit-version.sh show` |
-| List every stamped file and its stamp | `bash <kit>/scripts/tools/kit-version.sh list` |
-| Fail if any stamp differs from `VERSION` | `bash <kit>/scripts/tools/kit-version.sh check` |
-| Fail if any file differs from the manifest | `bash <kit>/scripts/tools/kit-version.sh verify` |
-| Report an installed copy: pristine / MODIFIED / UNSTAMPED | `bash <kit>/scripts/tools/kit-version.sh identify <file>…` |
+| Print the edition | `serpens-sdd version show` |
+| List every stamped file and its stamp | `serpens-sdd version list` |
+| Fail if any stamp differs from `VERSION` | `serpens-sdd version check` |
+| Fail if any file differs from the manifest | `serpens-sdd version verify` |
+| Report an installed copy: pristine / MODIFIED / UNSTAMPED | `serpens-sdd version identify <file>…` |
 
-`tests/kit-version-test.sh` gates all of this against both language trees.
+The npm package version is the edition as semver: edition `YYYY-MM-DD.N` is published as
+`1.YYYYMMDD.N`, so `npm view @fresh-fx59/serpens-sdd version` and `<kit>/VERSION` can never
+disagree about which edition you have.
+
+## Licence
+
+MIT — see [`LICENSE`](LICENSE).

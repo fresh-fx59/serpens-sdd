@@ -1,5 +1,5 @@
 # Build output and language caches. A working repository holds these; none of them belongs in a
-# commit, and an ignored file is invisible to every corp-* gate.
+# commit, and an ignored file is invisible to every spns-* gate.
 __pycache__/
 *.py[cod]
 *.class

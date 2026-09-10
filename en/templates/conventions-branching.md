@@ -2,7 +2,7 @@
 
 **Home:** `system-store/conventions/branching.md`. This is the single source of truth for the whole
 estate. Repos and agents reference it; they do not restate it.
-**Enforced by:** `tools/check-git-naming.sh` via lefthook (`commit-msg` + `pre-push`) in every repo.
+**Enforced by:** `tools/serpens-sdd git-naming` via lefthook (`commit-msg` + `pre-push`) in every repo.
 Prompts advise, checks enforce — never fix a red check by weakening it.
 
 ## Branch name
@@ -37,8 +37,8 @@ feat(ABCD-1234): commit message text
 
 ## Who does what
 
-- **The agent** creates the branch and writes the commit message during the `corp-spec` handover
-  step and throughout `corp-implement`. It must follow this file — that is why the pattern is
+- **The agent** creates the branch and writes the commit message during the `spns-spec` handover
+  step and throughout `spns-implement`. It must follow this file — that is why the pattern is
   repeated in each repo's agent context file.
 - **The dev** never renames a branch to satisfy the check by dropping the ticket. If the ticket is
   wrong, the branch is wrong.

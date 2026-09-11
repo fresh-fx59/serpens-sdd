@@ -1,0 +1,19 @@
+{
+  "agent_dir": ".codeassistant",
+  "args_token": "{{args}}",
+  "command_dir": "commands",
+  "command_format": "md",
+  "command_layout": "flat-prefixed",
+  "command_prefix": "spns-",
+  "commands_supported": true,
+  "id": "codeassistant",
+  "instruction_file": "AGENTS.md",
+  "label": "Codeassistant",
+  "scope_preference": [
+    "project"
+  ],
+  "skill_dir": "skills",
+  "skill_layout": "dir-per-skill",
+  "skills_supported": true,
+  "verified": "2026-09-11, @fission-ai/openspec 1.13.0; instruction_file conventional (not probed)"
+}

@@ -1,0 +1,1 @@
+{"name":"@fresh-fx59/serpens-sdd","version":"1.20260911.1","serpensSddEdition":"2026-09-11.1","type":"module","bin":{"serpens-sdd":"bin/serpens-sdd.mjs"},"engines":{"node":">=18"},"scripts":{"test":"node --test test/*.test.mjs"},"files":["bin","src","ports","kits","tools"]}

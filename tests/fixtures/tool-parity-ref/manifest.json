@@ -1,0 +1,84 @@
+{
+  "_comment": "Vendored reference bytes for tests/tools-parity-test.sh. Each entry records the historical vault path and the exact commit the bytes were extracted from, via: git show <commit>:<historical_path> > tests/fixtures/tool-parity-ref/<file>, followed by any redactions listed below. The historical path predates the 2026-09-09.1 rename and uses the pre-rename `corp-sdd-starter` tree on purpose — see tools-parity-test.sh's KIT_PREFIX comment. `original_sha256` is the checksum of the RAW historical bytes exactly as git history holds them, before any redaction. `sha256` is the checksum of the vendored file exactly as it sits in this directory (no trailing-newline games) — the bytes on disk, after every redaction in `redactions` has been applied to the historical bytes. `redactions` is an ordered list of exact, literal find/replace pairs; each `find` must occur EXACTLY ONCE in the historical bytes, applied in list order. A file that was vendored byte-for-byte carries an empty `redactions` list and `original_sha256 == sha256`. tools-parity-test.sh's verify-vendor-drift check recomputes `sha256` against the vendored file on disk and, when this vault's git history is present, also re-derives the commit via the same resolve_ref_commit walk the suite always used, hashes the raw historical bytes against `original_sha256`, applies `redactions` to those bytes, and diffs the result against `sha256` — so a reader (or the gate) can re-derive the vendored file from history plus this record, exactly.",
+  "commit": "0deaa3d7e2cf0f3987e865292aa63b062ced1508",
+  "historical_path_prefix": "content/enterprise-sdd-agents/corp-sdd-starter/scripts/tools",
+  "files": {
+    "aggregate-index.mjs": {
+      "commit": "0deaa3d7e2cf0f3987e865292aa63b062ced1508",
+      "historical_path": "content/enterprise-sdd-agents/corp-sdd-starter/scripts/tools/aggregate-index.mjs",
+      "original_sha256": "4f3ee69ddc879280bf62deb2600344245561096bd679242cb9fbc23c8e0c75b1",
+      "sha256": "4f3ee69ddc879280bf62deb2600344245561096bd679242cb9fbc23c8e0c75b1",
+      "redactions": []
+    },
+    "check-contract-split-brain.mjs": {
+      "commit": "0deaa3d7e2cf0f3987e865292aa63b062ced1508",
+      "historical_path": "content/enterprise-sdd-agents/corp-sdd-starter/scripts/tools/check-contract-split-brain.mjs",
+      "original_sha256": "e9c7fb6db9e63f2657891c7f0dcb681f7e668b4dcd3e0c3d88f0090b725f3724",
+      "sha256": "e9c7fb6db9e63f2657891c7f0dcb681f7e668b4dcd3e0c3d88f0090b725f3724",
+      "redactions": []
+    },
+    "check-git-naming.sh": {
+      "commit": "0deaa3d7e2cf0f3987e865292aa63b062ced1508",
+      "historical_path": "content/enterprise-sdd-agents/corp-sdd-starter/scripts/tools/check-git-naming.sh",
+      "original_sha256": "c9d05a882ba18cad16ee3822acbc211d165bb226c97c11cdd130962fe94c7188",
+      "sha256": "c9d05a882ba18cad16ee3822acbc211d165bb226c97c11cdd130962fe94c7188",
+      "redactions": []
+    },
+    "check-openspec-root.sh": {
+      "commit": "0deaa3d7e2cf0f3987e865292aa63b062ced1508",
+      "historical_path": "content/enterprise-sdd-agents/corp-sdd-starter/scripts/tools/check-openspec-root.sh",
+      "original_sha256": "b31d840aeb9118590e53baffb9e9c0bce0657f303ccc80dd772da8fed4d2d5d4",
+      "sha256": "b31d840aeb9118590e53baffb9e9c0bce0657f303ccc80dd772da8fed4d2d5d4",
+      "redactions": []
+    },
+    "corp-lint.mjs": {
+      "commit": "0deaa3d7e2cf0f3987e865292aa63b062ced1508",
+      "historical_path": "content/enterprise-sdd-agents/corp-sdd-starter/scripts/tools/corp-lint.mjs",
+      "original_sha256": "6fa9ec57980522192a77fd9e6894867b737c1f85fbb6ab7ac71945854f4f9870",
+      "sha256": "6fa9ec57980522192a77fd9e6894867b737c1f85fbb6ab7ac71945854f4f9870",
+      "redactions": []
+    },
+    "gen-index.mjs": {
+      "commit": "0deaa3d7e2cf0f3987e865292aa63b062ced1508",
+      "historical_path": "content/enterprise-sdd-agents/corp-sdd-starter/scripts/tools/gen-index.mjs",
+      "original_sha256": "de658ec347262158731f85f12a8a44890d5222530f40667203dcd8588b9f80b1",
+      "sha256": "a7036d070a52cba58240b7bed4abc7efc5597a9850b2b7cff34c83cd9d28ae49",
+      "redactions": [
+        {
+          "line": 17,
+          "find_sha256": "d3668c3388e04774c28d2232b5f06ebfc1c3e13e39bdd38963188871b5649acf",
+          "replace": "// repo identity is committed data, not the folder name (CI workspaces, worktrees, renamed clones)",
+          "reason": "a customer-technology noun was redacted from a vendored comment before this fixture directory became public. The original text is identified by line number and hash, NOT quoted: quoting it here would republish the very noun the redaction removes. Anyone holding this vault's history can re-derive it from the recorded commit and path. The comment is prose only, so the parity gate still measures the same behavioural contract (exit code, stdout, stderr)."
+        }
+      ]
+    },
+    "index-all.sh": {
+      "commit": "0deaa3d7e2cf0f3987e865292aa63b062ced1508",
+      "historical_path": "content/enterprise-sdd-agents/corp-sdd-starter/scripts/tools/index-all.sh",
+      "original_sha256": "9e434f273c58b127764f24db5cf70c4e27bfe7f14a3145ab72b9e9b5c93c9d4a",
+      "sha256": "9e434f273c58b127764f24db5cf70c4e27bfe7f14a3145ab72b9e9b5c93c9d4a",
+      "redactions": []
+    },
+    "kit-version.sh": {
+      "commit": "0deaa3d7e2cf0f3987e865292aa63b062ced1508",
+      "historical_path": "content/enterprise-sdd-agents/corp-sdd-starter/scripts/tools/kit-version.sh",
+      "original_sha256": "7f720f65d36b2f8e4a8c450d7a5a2ee32ff5fb5e236d29e41c818d6cfd4c2b53",
+      "sha256": "7f720f65d36b2f8e4a8c450d7a5a2ee32ff5fb5e236d29e41c818d6cfd4c2b53",
+      "redactions": []
+    },
+    "repository-state.sh": {
+      "commit": "0deaa3d7e2cf0f3987e865292aa63b062ced1508",
+      "historical_path": "content/enterprise-sdd-agents/corp-sdd-starter/scripts/tools/repository-state.sh",
+      "original_sha256": "1db17c04c66f0eab6ba88b2565a6d555c84397b6b6ee4905f98e2af556f59531",
+      "sha256": "1db17c04c66f0eab6ba88b2565a6d555c84397b6b6ee4905f98e2af556f59531",
+      "redactions": []
+    },
+    "sync-submodules.sh": {
+      "commit": "0deaa3d7e2cf0f3987e865292aa63b062ced1508",
+      "historical_path": "content/enterprise-sdd-agents/corp-sdd-starter/scripts/tools/sync-submodules.sh",
+      "original_sha256": "9fea2eb7f4db50017e49a046f93194820b64ffc9e62bd1bd4fe2f99654dd2305",
+      "sha256": "9fea2eb7f4db50017e49a046f93194820b64ffc9e62bd1bd4fe2f99654dd2305",
+      "redactions": []
+    }
+  }
+}

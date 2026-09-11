@@ -18,7 +18,7 @@ submodules under `system-store/submodules/`; no clone directory is maintained.
 2. If MCP is unavailable, collect the same `name`, `url`, and `baseBranch` inventory manually.
 3. Validate the inventory and write `system-store/project-repositories.json`.
 4. Run `sync-submodules.sh`; it registers, initializes, and updates only declared submodules.
-5. Install the kit's commands, tools, and six self-contained `corp-*` skills.
+5. Install the kit's commands, tools, and six self-contained `spns-*` skills.
 6. In every onboarded repository, install `templates/testing-stack.md` as `docs/testing-stack.md`
    and fill it in with the team. `spns-tdd` and `spns-debugging` name no framework of their own —
    they read that file, so an empty one leaves both skills without a stack.
@@ -33,7 +33,7 @@ optional because the required engineering disciplines are included in the kit.
 
 `<openspec>` below is that resolved CLI invocation, and `<change-id>` the OpenSpec change folder.
 
-| Step | Corp command | Required OpenSpec action | Repository-state gate |
+| Step | Serpens command | Required OpenSpec action | Repository-state gate |
 |---|---|---|---|
 | Specify | `spns-spec` | `<openspec> new change <change-id>`, then `instructions proposal` and `instructions specs` one artifact at a time, then `validate <change-id> --type change --strict --json` until `"valid": true`. | Inspect first; place yourself on an existing `feature/<TICKET>`, or prepare the configured base and cut it. |
 | Plan | `spns-plan` | `<openspec> instructions design` and `instructions tasks`, one at a time; nothing else. | `assert-change <TICKET> --checkout` — moves onto an existing story branch, never creates one. |

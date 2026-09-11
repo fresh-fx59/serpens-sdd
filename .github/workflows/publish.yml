@@ -1,0 +1,109 @@
+# Publish @fresh-fx59/serpens-sdd to npm via OIDC trusted publishing.
+#
+# There is no credential in this file, and none in the repository's secrets. npm mints a
+# short-lived token from the OIDC identity this job requests, which is why `id-token: write`
+# below is load-bearing rather than boilerplate. Requirements come from npm's trusted-publishers
+# documentation: npm >= 11.5.1, Node >= 22.14.0, and a trusted publisher configured on the
+# package's settings page naming this repository AND this file's NAME — `publish.yml`. Renaming
+# this file silently breaks the publisher configuration, so do not rename it.
+#
+# The job refuses to publish unless BOTH hold:
+#   1. the pushed tag equals package.json's version AND editionToSemver(serpensSddEdition);
+#   2. `node scripts/release.mjs` completed — it restamps both kit trees, runs the shell
+#      acceptance suites and the bin parity gate, rebuilds the zips, verifies every manifest,
+#      re-syncs the vendored kits, regenerates the port registry and runs the package's own
+#      suite. Without it a tag can publish a stale but internally consistent kit, and every
+#      test in the package still passes.
+name: publish
+
+# TAG ONLY. Never a branch: a branch filter would publish on every merge, and npm's unpublish
+# window is 72 hours — a mistaken publish is effectively permanent.
+on:
+  push:
+    tags:
+      - 'v1.*'
+      - '1.*'
+
+permissions:
+  # id-token is the ONLY credential path: an OIDC token minted per run, never stored anywhere.
+  # contents stays read-only — a publish job has no business writing to the repository.
+  id-token: write
+  contents: read
+
+# THE PATH SHIFT, stated where it bites. This file lives at the REPOSITORY ROOT's
+# .github/workflows/publish.yml. The package itself lives one level down, in `npm/`, with the
+# two kit trees (`en/`, `ru/`) and the shell acceptance suites (`tests/`) as its siblings at the
+# repository root — which is precisely the "one level up" layout scripts/release.mjs and
+# scripts/kit-source.mjs resolve against. So every `run:` step must execute inside `npm/`.
+defaults:
+  run:
+    working-directory: npm
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    # release.mjs's gen-ports.mjs step shells out to `npx` against ~40 real agent-CLI packages
+    # and takes ~20 minutes on its own; the shell suites, the zip rebuild and the package suite
+    # add a few more. 75 minutes leaves real headroom for a slow registry while still killing a
+    # hung probe long before the 6-hour default would.
+    timeout-minutes: 75
+
+    steps:
+      - name: Check out the repository
+        uses: actions/checkout@v4
+        with:
+          # Full history: the parity suite inside release.mjs resolves its reference bytes from
+          # git history rather than the working tree, so a shallow clone blinds it.
+          fetch-depth: 0
+
+      - name: Install Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          # No `registry-url:` on purpose. That input makes setup-node write an .npmrc with an
+          # auth line bound to an environment token — the exact credential shape trusted
+          # publishing exists to remove. The default registry is registry.npmjs.org already.
+
+      - name: Install an npm that can do trusted publishing
+        # The npm bundled with a Node 22 image predates OIDC publishing. Requesting a version is
+        # not the same as having one, which is what the next step is for.
+        run: npm install --global npm@^11.5.1
+
+      - name: Assert the RESOLVED Node and npm versions meet the floors
+        # Asserts what is actually in PATH, not what the steps above asked for. Without this, an
+        # older resolved npm reaches the publish step and fails there — after ~20 minutes of
+        # pipeline — with an authentication error that names none of this as the cause.
+        run: |
+          set -euo pipefail
+          NODE_FLOOR=22.14.0
+          NPM_FLOOR=11.5.1
+          NODE_HAVE="$(node -v | sed 's/^v//')"
+          NPM_HAVE="$(npm -v)"
+          echo "resolved node=$NODE_HAVE (floor $NODE_FLOOR), npm=$NPM_HAVE (floor $NPM_FLOOR)"
+          # `sort -V` puts the lower version first; if the floor is not the lowest of the pair,
+          # what we have is older than the floor.
+          if [ "$(printf '%s\n%s\n' "$NODE_FLOOR" "$NODE_HAVE" | sort -V | head -n1)" != "$NODE_FLOOR" ]; then
+            echo "::error::node $NODE_HAVE is older than the required $NODE_FLOOR — OIDC trusted publishing needs $NODE_FLOOR or newer"
+            exit 1
+          fi
+          if [ "$(printf '%s\n%s\n' "$NPM_FLOOR" "$NPM_HAVE" | sort -V | head -n1)" != "$NPM_FLOOR" ]; then
+            echo "::error::npm $NPM_HAVE is older than the required $NPM_FLOOR — OIDC trusted publishing needs $NPM_FLOOR or newer"
+            exit 1
+          fi
+
+      - name: Bind the tag to the artifact it would publish
+        # Runs FIRST of the real checks: a mismatched tag must cost seconds, not the ~20 minutes
+        # the release pipeline takes. Exits non-zero, printing the tag and both package.json
+        # values, when the tag disagrees with either.
+        run: node scripts/check-publish-tag.mjs "${GITHUB_REF}"
+
+      - name: Run the full release pipeline
+        # The gate that stops a stale kit shipping. It never publishes, pushes or tags.
+        run: node scripts/release.mjs
+
+      - name: Publish to npm
+        # No token, no auth environment variable, no registry credential line anywhere: the
+        # OIDC identity requested at the top of this job is the entire credential. The package
+        # is scoped, so --access public is what makes it a public publish rather than a refused
+        # private one.
+        run: npm publish --access public

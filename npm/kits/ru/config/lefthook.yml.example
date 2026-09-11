@@ -1,0 +1,26 @@
+pre-commit:
+  parallel: true
+  commands:
+    docs-disposer:
+      run: <serpens-sdd> verify-docs
+    # Имя ветки проверяется ЗДЕСЬ и при push — и это копия, которая срабатывает всегда.
+    # lefthook пропускает pre-push команду, если push не несёт файлов, которые он может
+    # перечислить, — а это ровно тот push, который публикует совсем новую ветку, когда имя
+    # впервые имеет значение. Проверено в build_command.go самого lefthook:
+    # `SkipError{"no matching push files"}`, без переопределения на уровне YAML (только
+    # `lefthook run pre-push --force`). У коммита staged-файлы есть всегда, так что эта копия
+    # пропущена быть не может, и плохое имя ветки отклоняется ещё до первого коммита в неё.
+    branch-convention:
+      run: <serpens-sdd> git-naming --branch
+
+commit-msg:
+  commands:
+    message-convention:
+      # {1} — файл сообщения коммита, который передаёт lefthook.
+      run: <serpens-sdd> git-naming --commit-msg {1}
+
+pre-push:
+  commands:
+    branch-convention:
+      # Только страховка — см. заметку у pre-commit; эта копия пропускается при push новой ветки.
+      run: <serpens-sdd> git-naming --branch

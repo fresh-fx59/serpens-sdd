@@ -1,7 +1,7 @@
 ---
 name: spns-tdd
 description: Tiered test-driven development against the repository's own testing stack. Use for ALL implementation work.
-serpens-version: 2026-09-11.1
+serpens-version: 2026-09-21.1
 ---
 ## Iron law
 No production code without a failing test first. No exceptions for "trivial" changes — trivial

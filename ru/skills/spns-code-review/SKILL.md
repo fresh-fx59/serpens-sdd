@@ -1,7 +1,7 @@
 ---
 name: spns-code-review
 description: Проведение и получение ревью на диффах, написанных агентом. Используйте для прогонов spns-review и при ответе на замечания ревью.
-serpens-version: 2026-09-11.1
+serpens-version: 2026-09-21.1
 ---
 `<openspec>` — вызов CLI OpenSpec, подставленный при установке; `<change-id>` — проверяемое изменение.
 

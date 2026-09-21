@@ -1,7 +1,7 @@
 ---
 name: spns-drill-down
 description: How to gather system knowledge — catalog to repo to live code. Use whenever work needs facts about ANY capability, module, or contract.
-serpens-version: 2026-09-11.1
+serpens-version: 2026-09-21.1
 ---
 ## Trust order (absolute)
 live code > repo living spec > repo index > central catalog > wiki. Each level may only ROUTE you

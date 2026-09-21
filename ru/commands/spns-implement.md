@@ -1,6 +1,6 @@
 ---
 description: Реализовать текущее изменение по задачам с дисциплиной TDD
-serpens-version: 2026-09-11.1
+serpens-version: 2026-09-21.1
 ---
 Реализуй изменение {{args}}. Следуй spns-tdd, spns-verification, spns-debugging и spns-drill-down.
 `{{args}}` — это `<change-id>`; `<openspec>` — вызов CLI OpenSpec, подставленный при установке.

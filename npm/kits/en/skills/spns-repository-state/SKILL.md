@@ -1,7 +1,7 @@
 ---
 name: spns-repository-state
 description: Use when starting or resuming Serpens SDD work, changing base or feature branches, working in a project submodule, or encountering dirty, detached, stale, unpushed, behind, or diverged Git state.
-serpens-version: 2026-09-11.1
+serpens-version: 2026-09-21.1
 ---
 
 # Serpens repository state

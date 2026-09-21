@@ -1,6 +1,6 @@
 ---
 description: Закрытие после merge — перенос delta в живые спеки, ADR и индекс
-serpens-version: 2026-09-11.1
+serpens-version: 2026-09-21.1
 ---
 Архивируй изменение {{args}}. Следуй навыку spns-verification.
 `<openspec>` — вызов CLI OpenSpec, подставленный при установке.

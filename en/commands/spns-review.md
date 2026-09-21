@@ -1,6 +1,6 @@
 ---
 description: Structured pre-review of a diff before humans spend time (any role)
-serpens-version: 2026-09-11.1
+serpens-version: 2026-09-21.1
 ---
 Review the diff of {{args}} (branch/PR/change). Follow skill spns-code-review throughout.
 `<change-id>` is the OpenSpec change under review; `<openspec>` is the OpenSpec CLI invocation setup

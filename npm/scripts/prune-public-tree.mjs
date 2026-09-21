@@ -52,7 +52,7 @@ const MAPPED_TOP_LEVEL = { en: 'kit:en', ru: 'kit:ru', npm: 'serpens-sdd-npm', t
 // see the comment there. (Deliberately not spelling the vendor's name in this comment either,
 // so this exemption stays narrowly about the directory token, not a blanket pass for the file.)
 const CI_WORKFLOW_DIR = '.github';
-const UNTOUCHED_TOP_LEVEL = new Set(['docs', 'LICENSE', 'README.md', CI_WORKFLOW_DIR, '.git']);
+const UNTOUCHED_TOP_LEVEL = new Set(['docs', 'LICENSE', 'README.md', CI_WORKFLOW_DIR, '.git', '.gitignore']);
 const UNTOUCHED_TOP_LEVEL_SUFFIXES = ['.zip'];
 
 // F4 floor guard: a mapped source that resolves but yields zero files (dirs exist, e.g. from a

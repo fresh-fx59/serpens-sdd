@@ -1,7 +1,7 @@
 ---
 name: spns-repository-state
 description: Проверка и безопасная подготовка Git-состояния перед любой Serpens SDD командой.
-serpens-version: 2026-09-11.1
+serpens-version: 2026-09-21.1
 ---
 # Состояние репозитория Serpens SDD
 

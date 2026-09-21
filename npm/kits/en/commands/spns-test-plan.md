@@ -1,6 +1,6 @@
 ---
 description: Turn an approved delta spec's scenarios into a black-box integration test plan QA can run on the dev stand (tester flow)
-serpens-version: 2026-09-11.1
+serpens-version: 2026-09-21.1
 ---
 Build the black-box integration test plan for change {{args}}.
 

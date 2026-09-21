@@ -1,6 +1,6 @@
 ---
 description: Превратить сценарии утверждённой delta spec в black-box интеграционный test plan для QA на стенде разработки
-serpens-version: 2026-09-11.1
+serpens-version: 2026-09-21.1
 ---
 Создай black-box интеграционный test plan для {{args}}.
 

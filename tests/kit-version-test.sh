@@ -4,6 +4,8 @@ set -uo pipefail
 
 KIT="${1:?path to starter kit root}"
 KIT=$(cd "$KIT" && pwd -P)
+source "$(dirname "${BASH_SOURCE[0]}")/package-root.sh"
+PKG_ROOT="$(serpens_package_root)" || exit 1
 TEST_ROOT=$(mktemp -d)
 trap 'rm -rf "$TEST_ROOT"' EXIT
 PASS=0
@@ -14,7 +16,7 @@ no() { FAIL=$((FAIL + 1)); echo "  ✗ $1"; printf '%s\n' "$2" | sed 's/^/      
 cp -R "$KIT" "$TEST_ROOT/kit"
 K="$TEST_ROOT/kit"
 V=$(tr -d '[:space:]' < "$K/VERSION")
-KVBIN="$(cd "$(dirname "$0")/.." && pwd)/serpens-sdd-npm/tools/kit-version.sh"
+KVBIN="$PKG_ROOT/tools/kit-version.sh"
 KV() { bash "$KVBIN" "$@" --root "$K" 2>&1; }
 
 echo "T1 show prints the kit edition"

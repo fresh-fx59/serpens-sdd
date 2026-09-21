@@ -214,6 +214,45 @@ export function buildSteps({ dryRun }) {
     },
   });
 
+  // F3 fix: deletes files retired from the vault source (e.g. a config/*.example nobody ships
+  // anymore) that would otherwise sit in a public-repo checkout forever, since the sync has
+  // always been overwrite-and-add. §10-preserved archival docs are never touched
+  // (prune-public-tree.mjs reads the SAME preserve list starter-contract-test.sh does, from
+  // tests/preserved-public-docs.sh).
+  //
+  // This step is now ALWAYS present in the pipeline — it used to be added to buildSteps() only
+  // when SERPENS_PUBLIC_REPO_DIR was set, and nothing in the repo ever set it, so a normal CI
+  // release pruned nothing and printed nothing: the exact stale-file class this script exists
+  // to fix recurred silently. Now:
+  //   - with SERPENS_PUBLIC_REPO_DIR set to a real clone of fresh-fx59/serpens-sdd, it reports
+  //     (dry-run) or, with SERPENS_PUBLIC_REPO_PRUNE_APPLY=1 alongside it, actually deletes;
+  //   - with no public-repo checkout available, it says so LOUDLY (a visible, non-empty log
+  //     line every release run) instead of vanishing from the step list.
+  // The publish workflow (under this package's CI workflow directory) wires
+  // SERPENS_PUBLIC_REPO_DIR (and, for a tagged real publish, SERPENS_PUBLIC_REPO_PRUNE_APPLY=1)
+  // by checking out fresh-fx59/serpens-sdd as a sibling directory before running this script,
+  // so the actual release workflow exercises the real prune, not just this loud-refusal
+  // fallback.
+  steps.push({
+    label: 'prune-public-tree.mjs (delete public-repo files retired from the vault source)',
+    exec: () => {
+      const publicRepoDir = process.env.SERPENS_PUBLIC_REPO_DIR;
+      if (!publicRepoDir) {
+        const msg = 'SERPENS_PUBLIC_REPO_DIR is not set — no public-repo checkout to prune this '
+          + 'run. Stale files retired from the vault source will NOT be caught. Set '
+          + 'SERPENS_PUBLIC_REPO_DIR to a clone of fresh-fx59/serpens-sdd to exercise this step '
+          + '(the publish workflow does this on every run).';
+        console.log(`   ⚠ ${msg}`);
+        return dryRun
+          ? { code: 0, stdout: msg, stderr: '', dryRun: true }
+          : { code: 0, stdout: msg, stderr: '' };
+      }
+      const pruneApply = process.env.SERPENS_PUBLIC_REPO_PRUNE_APPLY === '1';
+      const pruneArgv = [join(PKG_ROOT, 'scripts', 'prune-public-tree.mjs'), publicRepoDir, ...(pruneApply ? ['--apply'] : [])];
+      return run(process.execPath, pruneArgv, { dryRun, cwd: PKG_ROOT });
+    },
+  });
+
   return steps;
 }
 

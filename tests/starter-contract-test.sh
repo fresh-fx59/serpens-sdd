@@ -2,6 +2,11 @@
 set -u
 
 KIT="${1:?usage: starter-contract-test.sh <starter-kit-root>}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$KIT" || exit 1
+KIT="$PWD"
+source "$SCRIPT_DIR/package-root.sh"
+PKG_ROOT="$(serpens_package_root)" || exit 1
 PASS=0
 FAIL=0
 
@@ -9,9 +14,64 @@ pass() { printf '  ✓ %s\n' "$1"; PASS=$((PASS + 1)); }
 fail() { printf '  ✗ %s\n' "$1"; FAIL=$((FAIL + 1)); }
 check() { if "$@"; then pass "$*"; else fail "$*"; fi; }
 
+# spec-npm-oidc-publishing-2026-09-11.md §10: the public repository carries EIGHT
+# documents the vault deliberately does not duplicate — four per language under
+# docs/ (FLOW.md, FLOW-TABLE.md, FLOW-SCHEMA.md, MIGRATION-<rev>-to-current.md), plus
+# three at the repo root (RENAME.md, index.html, common-contract.html, outside $KIT).
+# They are historical/reference material about the OLD (pre-submodule, pre-OpenSpec,
+# scripts/-based) system, published once and never synced from the vault, so their
+# prose legitimately narrates scripts/, clones/, opsx and other retired vocabulary.
+# The contract checks below apply to the SHIPPED KIT CONTRACT, not to that archival
+# material — exclude it by name rather than weakening the check for the real kit.
+#
+# The list itself is declared ONCE, in tests/preserved-public-docs.sh — shared with the
+# release-side pruning step (serpens-sdd-npm/src/preserved-public-docs.mjs parses the same
+# file) so the two can never drift apart.
+source "$SCRIPT_DIR/preserved-public-docs.sh"
+is_preserved_doc() {
+  local name="$1" candidate
+  for candidate in $PRESERVED_PUBLIC_DOC_NAMES; do
+    [ "$name" = "$candidate" ] && return 0
+  done
+  for candidate in $PRESERVED_PUBLIC_DOC_GLOBS; do
+    case "$name" in
+      $candidate) return 0 ;;
+    esac
+  done
+  return 1
+}
+# F1/F2 fix: built FROM the single sourced list (never restated), and anchored to the KIT
+# ROOT's docs/ directory only — never any depth. ripgrep's --glob anchoring is relative to the
+# invocation's CWD (not the search-root argument passed on the command line), which is exactly
+# why we `cd "$KIT"` above and why every rg call below searches "." / relative subpaths instead
+# of passing "$KIT" as an absolute path: a leading '/' in a --glob pattern only anchors against
+# CWD, so anchoring against an absolute search-path argument silently does nothing (confirmed:
+# `rg --glob '!/docs/x' /abs/path` still matches /abs/path/docs/x). §10 preserves only the
+# kit-root docs/<name> — never a nested docs/ at any depth (e.g. skills/*/docs/) — so the glob
+# must reconcile with classifyTargetOnly's and T1's identical kit-root-only rule.
+RG_EXCLUDE_PRESERVED=()
+for _name in $PRESERVED_PUBLIC_DOC_NAMES; do
+  RG_EXCLUDE_PRESERVED+=(--glob "!/docs/${_name}")
+done
+for _glob in $PRESERVED_PUBLIC_DOC_GLOBS; do
+  RG_EXCLUDE_PRESERVED+=(--glob "!/docs/${_glob}")
+done
+unset _name _glob
+
 printf 'T1 compact current documentation\n'
 docs="$(find "$KIT/docs" -maxdepth 1 -type f -exec basename {} \; | LC_ALL=C sort | tr '\n' ' ')"
-if [ "$docs" = "OPERATIONS.md SETUP.md UPGRADE.md " ]; then pass "only SETUP.md, UPGRADE.md and OPERATIONS.md ship"; else fail "unexpected docs: $docs"; fi
+extra_docs=""
+for d in $docs; do
+  case "$d" in
+    OPERATIONS.md|SETUP.md|UPGRADE.md) ;;
+    *) is_preserved_doc "$d" || extra_docs="$extra_docs$d "  ;;
+  esac
+done
+if [ -z "$extra_docs" ]; then
+  pass "only SETUP.md, UPGRADE.md, OPERATIONS.md and the §10-preserved public-only docs ship"
+else
+  fail "unexpected docs: $extra_docs"
+fi
 
 printf 'T2 submodule layout and inventory contract\n'
 # spec-drop-inventory-file-2026-09-11.md §6/item 8: project-repositories.json.example is
@@ -20,12 +80,12 @@ printf 'T2 submodule layout and inventory contract\n'
 check test ! -e "$KIT/config/project-repositories.json.example"
 check test -f "$KIT/system-store-template/submodules/.gitkeep"
 if [ ! -e "$KIT/scripts" ]; then pass "the kit ships no scripts/ directory"; else fail "scripts/ still in the kit"; fi
-if ! rg -n 'sync-repos|repos\.json|(^|[/` ])clones([/` ]|$)' "$KIT" --glob '!**/slides/**' >/dev/null; then
+if ! rg -n 'sync-repos|repos\.json|(^|[/` ])clones([/` ]|$)' . --glob '!**/slides/**' "${RG_EXCLUDE_PRESERVED[@]}" >/dev/null; then
   pass "clone-era contract is absent"
 else
   fail "clone-era contract remains"
 fi
-if ! rg -n 'scripts/' "$KIT" >/dev/null; then
+if ! rg -n 'scripts/' . "${RG_EXCLUDE_PRESERVED[@]}" >/dev/null; then
   pass "the kit contains no reference to a scripts/ directory anywhere"
 else
   fail "the kit still references a scripts/ directory somewhere in its prose"
@@ -79,10 +139,10 @@ if rg -q 'DRIFT IS NOT YOURS TO FIX|РАСХОЖДЕНИЕ ЧИНИШЬ НЕ Т�
 # and this is the one that was encoding the leak.
 if rg -q 'error-routing|error contract|контракт ошибок' "$KIT/commands/spns-spec.md"; then pass "spns-spec records error/rejection facts through the repository's own slot"; else fail "spns-spec error/rejection facts missing"; fi
 if rg -q 'ACCEPTANCE|ПРИЁМКА' "$KIT/commands/spns-review.md"; then pass "spns-review reviews the acceptance scenarios"; else fail "spns-review acceptance lens missing"; fi
-TOOLS="$(cd "$(dirname "$0")/.." && pwd)/serpens-sdd-npm/tools"
+TOOLS="$PKG_ROOT/tools"
 if rg -q 'names no observable surface' "$TOOLS/serpens-lint.mjs"; then pass "serpens-lint warns on an unobservable requirement"; else fail "serpens-lint observability warning missing"; fi
 # The slash commands these replaced do not exist in OpenSpec 1.10's core profile.
-if rg -q 'opsx' "$KIT/commands" "$KIT/skills" "$KIT/docs"; then fail "a non-existent opsx slash command is still referenced"; else pass "no opsx slash command referenced"; fi
+if rg -q 'opsx' commands skills docs "${RG_EXCLUDE_PRESERVED[@]}"; then fail "a non-existent opsx slash command is still referenced"; else pass "no opsx slash command referenced"; fi
 
 printf 'T6 installed command paths are runtime-derived\n'
 # Bare script names (no tools/ prefix) are just as much a dead call site as the prefixed form —
@@ -90,7 +150,7 @@ printf 'T6 installed command paths are runtime-derived\n'
 # since the file was never copied into the target repository. Ban both forms together.
 BARE_SCRIPTS='repository-state|verify-docs|check-openspec-root|check-git-naming|sync-submodules|index-all|aggregate-index|gen-index|serpens-lint|check-contract-split-brain|kit-version'
 if ! rg -n "/Users/|/home/|/var/lib/zoekt|\.\./clones|bash tools/|tools/[A-Za-z0-9_.-]+\.(sh|mjs)|\\b($BARE_SCRIPTS)\.(sh|mjs)" \
-     "$KIT" --glob '!MANIFEST.sha256' >/dev/null; then
+     . --glob '!MANIFEST.sha256' "${RG_EXCLUDE_PRESERVED[@]}" >/dev/null; then
   pass "no machine-specific path and no tools/ or bare script path anywhere in the kit"
 else
   fail "a script path (prefixed or bare) or machine-specific path remains"

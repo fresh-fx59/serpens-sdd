@@ -97,9 +97,76 @@ jobs:
         # values, when the tag disagrees with either.
         run: node scripts/check-publish-tag.mjs "${GITHUB_REF}"
 
+      # F3 fix: release.mjs's prune-public-tree.mjs step used to be wired ONLY behind
+      # SERPENS_PUBLIC_REPO_DIR, which nothing in this repository ever set — so a real, tagged
+      # CI publish pruned nothing, silently, every time. This checks out the PUBLIC repository
+      # (this same content, as published — the thing prune-public-tree.mjs actually prunes) into
+      # `public-repo-checkout/`, a SUBDIRECTORY of `github.workspace` (`actions/checkout`'s
+      # `path:` input is always resolved against `github.workspace`, the primary checkout's own
+      # root — never a sibling of it) and points the release pipeline at it. `--apply` is
+      # deliberately on: this runs only on a real, tag-triggered publish job, immediately before
+      # `npm publish`, so pruning the public repo IS this release doing its job, not a dry
+      # preview of it.
+      #
+      # D1 fix: a LOCAL delete with no commit and no push is not a fix — the retired file was
+      # still sitting in the public repository after every "successful" run, and the log line
+      # (`deleted N path(s)`) read as success while nothing durable had happened. `token:` here
+      # is what makes the checkout below (and the commit+push step after the pipeline runs)
+      # write-capable against `fresh-fx59/serpens-sdd`, a DIFFERENT repository than the one this
+      # workflow lives in — `GITHUB_TOKEN` (scoped by the `permissions:` block above) cannot
+      # reach it no matter how that block is set, so a dedicated PAT is required. See the
+      # "Commit and push the prune" step below for exactly what the operator must set.
+      - name: Check out the public repository for prune-public-tree.mjs
+        uses: actions/checkout@v4
+        with:
+          repository: fresh-fx59/serpens-sdd
+          path: public-repo-checkout
+          token: ${{ secrets.SERPENS_SDD_PUBLIC_REPO_TOKEN }}
+
       - name: Run the full release pipeline
-        # The gate that stops a stale kit shipping. It never publishes, pushes or tags.
+        # The gate that stops a stale kit shipping. It never publishes, pushes or tags itself —
+        # committing/pushing the PRUNE's effect is the separate, explicit step right after this
+        # one, not something release.mjs or prune-public-tree.mjs do on their own.
+        # SERPENS_PUBLIC_REPO_DIR points prune-public-tree.mjs at the public checkout above,
+        # inside `github.workspace` (matching kit-source.mjs's own resolution one level up from
+        # `npm/`, i.e. this job's checked-out repository root).
+        env:
+          SERPENS_PUBLIC_REPO_DIR: ${{ github.workspace }}/public-repo-checkout
+          SERPENS_PUBLIC_REPO_PRUNE_APPLY: '1'
         run: node scripts/release.mjs
+
+      # D1 fix: makes the prune durable. prune-public-tree.mjs itself never commits or pushes —
+      # same "the caller owns that" discipline release.mjs already documents for `npm publish` —
+      # so this is that caller, and it is deliberately its own step (not folded into the
+      # pipeline step above) so a diff-free run is visibly a no-op in the log rather than a
+      # silent branch inside release.mjs.
+      #
+      # REQUIRED OPERATOR SETUP (this cannot self-provision — GitHub Actions repository secrets
+      # are set in the GitHub repository UI, not through this vault's sops-based secrets
+      # console, which only manages NixOS fleet-host secrets):
+      #   1. Create a GitHub fine-grained personal access token (or a bot account's PAT) scoped
+      #      to ONLY `fresh-fx59/serpens-sdd`, with "Contents: Read and write" repository
+      #      permission and nothing else.
+      #   2. In the repository that hosts THIS workflow, add it as an Actions repository secret
+      #      named exactly `SERPENS_SDD_PUBLIC_REPO_TOKEN`
+      #      (Settings → Secrets and variables → Actions → New repository secret).
+      #   3. Until that secret is set, `secrets.SERPENS_SDD_PUBLIC_REPO_TOKEN` resolves to an
+      #      empty string, the checkout above authenticates as an anonymous/read-only clone, and
+      #      `git push` below fails loudly (non-zero exit, job fails) — it does NOT silently
+      #      skip, so a missing secret cannot regress back to "logs success, prunes nothing".
+      - name: Commit and push the prune to the public repository
+        working-directory: public-repo-checkout
+        run: |
+          set -euo pipefail
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "prune-public-tree.mjs made no changes this release — nothing to commit or push."
+            exit 0
+          fi
+          git config user.name 'serpens-sdd release bot'
+          git config user.email 'noreply@users.noreply.github.com'
+          git add -A
+          git commit -m "chore: prune files retired from the vault source (release ${GITHUB_REF_NAME})"
+          git push origin HEAD:refs/heads/main
 
       - name: Publish to npm
         # No token, no auth environment variable, no registry credential line anywhere: the

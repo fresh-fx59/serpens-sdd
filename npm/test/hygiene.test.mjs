@@ -12,6 +12,17 @@ const ROOT = join(__dirname, '..');
 // content) — only the package's own logic.
 const VENDORS = [/bitbucket/i, /jira/i, /confluence/i, /github/i, /gitlab/i, /linear/i];
 
+// F7: a narrow, documented exemption — NOT a blanket pass for the file — for this repository's
+// OWN CI tooling directory name, `.github/`. That is this repo's real, load-bearing workflow
+// directory (see .github/workflows/publish.yml), not a mention of GitHub the vendor PRODUCT the
+// /github/i ban exists to keep out of this package's source/logic. Before this exemption,
+// scripts/prune-public-tree.mjs dodged the ban with `['.', 'git', 'hub'].join('')` — string
+// concatenation that hid the real dependency from readers AND from this very grep. The
+// exemption is scoped to exactly one file and exactly the literal `.github` token (never a
+// bare, unqualified "github" mention, which would still legitimately trip the ban in that
+// file) so a future GitHub-vendor-coupling mention in prune-public-tree.mjs is still caught.
+const GITHUB_DIR_EXEMPT_FILES = new Set([join(ROOT, 'scripts', 'prune-public-tree.mjs')]);
+
 function walk(dir, out = []) {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
@@ -30,7 +41,13 @@ test('no source file contains a vendor product name', () => {
   ];
   assert.ok(files.length > 0, 'expected src/bin/scripts to contain files');
   for (const f of files) {
-    const text = readFileSync(f, 'utf8');
+    let text = readFileSync(f, 'utf8');
+    if (GITHUB_DIR_EXEMPT_FILES.has(f)) {
+      // Strip only the exact `.github` directory-name token before checking; any OTHER
+      // occurrence of "github" in this file (a comment mentioning the vendor, a URL, etc.)
+      // still trips the ban below.
+      text = text.replace(/\.github\b/g, '');
+    }
     for (const v of VENDORS) {
       assert.ok(!v.test(text), `${f} mentions vendor pattern ${v}`);
     }

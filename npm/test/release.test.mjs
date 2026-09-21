@@ -11,6 +11,7 @@ import {
   computeVersionProblems,
 } from '../scripts/release.mjs';
 import { resolveKitSource } from '../scripts/kit-source.mjs';
+import { resolvePublishWorkflow } from './helpers/workflow-path.mjs';
 import { SUPPORTED_MINORS } from '../src/openspecversion.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -222,4 +223,75 @@ test('the gen-ports step passes gen-ports.mjs the --openspec invocation it requi
   const minor = pinned[1].split('.').slice(0, 2).join('.');
   assert.equal(minor, SUPPORTED_MINORS[0],
     'the release must probe the NEWEST supported OpenSpec minor');
+});
+
+// F3 regression --------------------------------------------------------------------------
+
+test('the prune-public-tree.mjs step is ALWAYS in the pipeline, not gated behind an env var nobody sets', () => {
+  // Before the fix, this step existed only `if (publicRepoDir)`, and nothing in this repo ever
+  // set SERPENS_PUBLIC_REPO_DIR — so a normal release pruned nothing and the step never even
+  // appeared in the step list. buildSteps() must expose it unconditionally now.
+  const withEnv = buildSteps({ dryRun: true });
+  const withoutStep = withEnv.find((s) => s.label.includes('prune-public-tree.mjs'));
+  assert.ok(withoutStep, 'expected a prune-public-tree.mjs step to always be present in buildSteps()');
+});
+
+test('the prune step says so loudly when it has no public checkout to prune, instead of vanishing', async () => {
+  const savedDir = process.env.SERPENS_PUBLIC_REPO_DIR;
+  const savedApply = process.env.SERPENS_PUBLIC_REPO_PRUNE_APPLY;
+  delete process.env.SERPENS_PUBLIC_REPO_DIR;
+  delete process.env.SERPENS_PUBLIC_REPO_PRUNE_APPLY;
+  try {
+    const steps = buildSteps({ dryRun: false });
+    const step = steps.find((s) => s.label.includes('prune-public-tree.mjs'));
+    assert.ok(step, 'expected a prune-public-tree.mjs step');
+    const result = await step.exec();
+    assert.equal(result.code, 0, 'no public checkout is a loud notice, not a pipeline failure');
+    assert.match(result.stdout, /SERPENS_PUBLIC_REPO_DIR is not set/,
+      'the step must say loudly that nothing was pruned this run');
+  } finally {
+    if (savedDir === undefined) delete process.env.SERPENS_PUBLIC_REPO_DIR; else process.env.SERPENS_PUBLIC_REPO_DIR = savedDir;
+    if (savedApply === undefined) delete process.env.SERPENS_PUBLIC_REPO_PRUNE_APPLY; else process.env.SERPENS_PUBLIC_REPO_PRUNE_APPLY = savedApply;
+  }
+});
+
+test('the CI publish workflow wires a real public-repo checkout into the release pipeline', () => {
+  const workflow = readFileSync(resolvePublishWorkflow(join(__dirname, '..')), 'utf8');
+  assert.match(workflow, /fresh-fx59\/serpens-sdd/,
+    'the workflow must check out the public repository prune-public-tree.mjs actually prunes');
+  assert.match(workflow, /SERPENS_PUBLIC_REPO_DIR/,
+    'the workflow must point the release pipeline at the checked-out public repo');
+  assert.match(workflow, /SERPENS_PUBLIC_REPO_PRUNE_APPLY/,
+    'a real tagged publish must actually apply the prune, not just dry-run it');
+});
+
+// D1 regression --------------------------------------------------------------------------
+
+test('the CI publish workflow actually commits and pushes the prune to the public repository', () => {
+  // Before the fix, the workflow deleted files in a LOCAL checkout, logged "deleted N path(s)",
+  // and then destroyed the runner — no commit, no push, `permissions: contents: read` — so the
+  // retired file was still live in the public repo after every "successful" release.
+  const workflow = readFileSync(resolvePublishWorkflow(join(__dirname, '..')), 'utf8');
+  assert.match(workflow, /git push/,
+    'the workflow must push the prune to the public repository, not just delete locally');
+  assert.match(workflow, /git commit/,
+    'the workflow must commit the pruned tree before it can push it');
+  assert.match(workflow, /secrets\.SERPENS_SDD_PUBLIC_REPO_TOKEN/,
+    'pushing to a DIFFERENT repository needs a dedicated write-scoped token — GITHUB_TOKEN '
+    + 'cannot reach fresh-fx59/serpens-sdd regardless of this job\'s own permissions: block');
+  assert.match(workflow, /token:\s*\$\{\{\s*secrets\.SERPENS_SDD_PUBLIC_REPO_TOKEN\s*\}\}/,
+    'the public-repo checkout must actually be authenticated with that token, not merely mention it');
+});
+
+test('the CI publish workflow no longer claims the public checkout sits beside the primary one', () => {
+  // F3's comment claimed `path: public-repo-checkout` makes actions/checkout create a SIBLING
+  // of the primary checkout. It does not: `path:` is always resolved against `github.workspace`
+  // (the primary checkout's own root), so the public checkout is a SUBDIRECTORY of it.
+  const workflow = readFileSync(resolvePublishWorkflow(join(__dirname, '..')), 'utf8');
+  assert.doesNotMatch(workflow, /a sibling of the working directory/,
+    'the false "sibling" claim about actions/checkout path: resolution must be gone');
+  assert.doesNotMatch(workflow, /sits next to that root, not inside it/,
+    'the false "sits next to, not inside" claim must be gone');
+  assert.match(workflow, /subdirectory/i,
+    'the corrected comment must say path: resolves to a SUBDIRECTORY of github.workspace');
 });

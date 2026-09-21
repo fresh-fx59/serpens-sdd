@@ -52,13 +52,23 @@ test('the workflow requests an OIDC identity token', () => {
     'contents must be read-only: a publish job has no business writing to the repository');
 });
 
-test('the workflow carries NO credential of any kind', () => {
+test('the workflow carries NO npm/registry credential of any kind', () => {
   const text = workflowText();
-  // The whole point of trusted publishing: there is nothing here to steal, and nothing to rotate.
+  // The whole point of trusted publishing: there is nothing npm-shaped here to steal or rotate.
   for (const banned of ['NODE_AUTH_TOKEN', '_authToken', 'NPM_TOKEN']) {
     assert.ok(!text.includes(banned), `the workflow must not mention ${banned}`);
   }
-  assert.ok(!/\$\{\{\s*secrets\./.test(text), 'the workflow must reference no repository secret at all');
+  // D1 fix: pruning the PUBLIC repository (a different repository than this workflow lives in)
+  // durably requires ITS OWN write-scoped token — GITHUB_TOKEN cannot reach another repository
+  // regardless of this job's own `permissions:` block. That secret has nothing to do with npm
+  // publishing (no registry auth, no OIDC substitute), so it is named and scoped narrowly rather
+  // than banned outright: only SERPENS_SDD_PUBLIC_REPO_TOKEN may appear as a `secrets.` reference.
+  const secretRefs = [...text.matchAll(/\$\{\{\s*secrets\.(\w+)\s*\}\}/g)].map((m) => m[1]);
+  for (const name of secretRefs) {
+    assert.equal(name, 'SERPENS_SDD_PUBLIC_REPO_TOKEN',
+      `the only repository secret this workflow may reference is SERPENS_SDD_PUBLIC_REPO_TOKEN `
+      + `(scoped to pushing the prune to the public repo) — found secrets.${name}`);
+  }
   // setup-node's `registry-url` input is not neutral: it writes an .npmrc containing a
   // `_authToken` line bound to NODE_AUTH_TOKEN. That is the exact credential shape trusted
   // publishing exists to remove, and with no token set it is an empty auth line for npm to

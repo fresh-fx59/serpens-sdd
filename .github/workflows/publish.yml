@@ -63,6 +63,20 @@ jobs:
         # a bare "command not found" and the release pipeline never gets past step 9.
         run: sudo apt-get update && sudo apt-get install -y ripgrep
 
+      - name: Configure a git identity for this runner
+        # test/e2e.test.mjs exercises src/storeregistry.mjs's real store-registration commit
+        # (`git commit -m "chore(serpens-sdd): commit store identity metadata"`) against a
+        # throwaway store it clones from a fixture remote — that clone inherits whatever git
+        # identity is ambient in the environment, same as a real user's store would on their own
+        # machine. Every developer machine this has ever been tested on already has one; a bare
+        # ubuntu-latest runner does not, so the commit dies with "Author identity unknown" and
+        # `npm test` (release.mjs step 19) never gets past this one e2e case. This is the CI
+        # equivalent of "make sure git is configured" — not a workaround in test code, since the
+        # commit itself is real, shipped production behavior being exercised faithfully.
+        run: |
+          git config --global user.email "ci@serpens-sdd.invalid"
+          git config --global user.name "serpens-sdd CI"
+
       - name: Install Node
         uses: actions/setup-node@v4
         with:

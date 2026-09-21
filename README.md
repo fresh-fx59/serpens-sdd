@@ -6,9 +6,6 @@ whatever their employer approved and whose network is restricted. It wraps
 repository, branch, documentation and contract gates: the rules you were hoping the model
 would remember become checks that run.
 
-> Renamed from **Corp SDD** on 2026-09-09. Old clone URLs redirect; the old Pages URL does
-> not. See [`docs/RENAME.md`](docs/RENAME.md).
-
 ## Install
 
 ```bash
@@ -114,7 +111,6 @@ answer `inherit` in the slots it covers.
 
 - `en/` and `ru/`: equivalent English and Russian kits — commands, skills, templates, docs,
   config examples, slides;
-- `docs/RENAME.md`: what changed in the Corp SDD → Serpens SDD rename, and how to migrate;
 - `docs/index.html`: the published five-minute presentation —
   <https://fresh-fx59.github.io/serpens-sdd/>;
 - `docs/common-contract.html`: how a cross-repo contract stays single-owner —
@@ -122,8 +118,6 @@ answer `inherit` in the slots it covers.
   routes a spoke delta needs (change-scoped while the contract change is open, spec-scoped
   once it is archived), measured against OpenSpec 1.10.0;
 - `serpens-sdd-starter-en.zip` / `serpens-sdd-starter-ru.zip`: the same kits as archives;
-- `corp-sdd-starter-*.zip`: the OLD archives, frozen at their `2026-08-26.8` content so the
-  pre-rename download links keep resolving. Not maintained; removed one edition from now.
 
 **The executables are not in this repository.** The ten deterministic scripts and the
 `serpens-sdd` CLI ship in the npm package, which is also where their acceptance suites and

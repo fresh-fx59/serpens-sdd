@@ -298,7 +298,16 @@ parity_case() {
     out_a="${out_a//corp-lint/serpens-lint}"; err_a="${err_a//corp-lint/serpens-lint}"
   fi
   if [ "$label" = "index-check" ]; then
-    err_a="${err_a//node tools\/gen-index.mjs && git add openspec\/index.json openspec\/index.md openspec\/repo.txt/serpens-sdd index && git add openspec/index.json openspec/index.md openspec/repo.txt}"
+    # A bash `${var//search/replace}` pattern with escaped literal slashes (`\/`) in `search`
+    # is NOT portable: bash 3.2 (macOS's /bin/bash, where this passed for months) and bash 5.2
+    # (Debian/Ubuntu, incl. every GitHub Actions runner) disagree on how `\/` unescapes inside
+    # that construct, so the exact same line normalizes cleanly on a dev Mac and corrupts the
+    # string (partial, duplicated replacement) on the real CI target — reproduced with Docker
+    # `node:22-bookworm` (bash 5.2.15) against this exact line. `sed` with a `#`-delimited
+    # literal substitution needs no slash-escaping and behaves identically on both, so this is
+    # done with `sed`, not bash pattern matching, specifically because it must run unmodified on
+    # a target CLI/shell this dev machine does not natively provide.
+    err_a="$(printf '%s' "$err_a" | sed 's#node tools/gen-index.mjs && git add openspec/index.json openspec/index.md openspec/repo.txt#serpens-sdd index \&\& git add openspec/index.json openspec/index.md openspec/repo.txt#')"
   fi
   # spec-drop-inventory-file-2026-09-11.md §6: sync-submodules.sh gained `--repos-from -`
   # alongside the unchanged `--inventory`. The frozen reference script predates that change and

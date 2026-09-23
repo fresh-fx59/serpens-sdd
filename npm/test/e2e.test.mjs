@@ -778,6 +778,14 @@ function makeRepoLocalFixture() {
 function installOurHooks(repoRoot) {
   const shim = join(repoRoot, 'serpens', 'bin', 'serpens-sdd');
   const hooks = join(repoRoot, '.git', 'hooks');
+  // Force core.hooksPath back to the repo-local default (Found 2026-09-23: on any developer
+  // machine with a GLOBAL core.hooksPath override pointed outside the repository -- exactly
+  // the misconfiguration stage8-guards.mjs guard 5 exists to flag -- git ignores .git/hooks/*
+  // entirely and this fixture's hand-written pre-commit/commit-msg hooks below silently never
+  // run, so the branch/message gates they enforce never fire and this test's own commits pass
+  // when they should be refused). This mirrors what a real `lefthook install` sets, and this
+  // repo has no ambient config of its own to preserve, so an explicit local override is safe.
+  execFileSync('git', ['config', 'core.hooksPath', '.git/hooks'], { cwd: repoRoot });
   writeFileSync(join(hooks, 'pre-commit'), `#!/bin/sh\n"${shim}" verify-docs --staged-scope || exit 1\n"${shim}" git-naming --branch || exit 1\n`);
   writeFileSync(join(hooks, 'commit-msg'), `#!/bin/sh\nexec "${shim}" git-naming --commit-msg "$1"\n`);
   chmodSync(join(hooks, 'pre-commit'), 0o755);

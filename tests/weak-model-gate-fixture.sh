@@ -115,7 +115,7 @@ EOF
 touch "$REPO/openspec/specs/.gitkeep" "$REPO/openspec/changes/.gitkeep"
 git -C "$REPO" add -A
 git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
-  commit --quiet -m "chore: base sample-service repo"
+  commit --quiet --no-verify -m "chore: base sample-service repo"
 
 # --- Step 1b: generate the real openspec index (via the package's own gen-index.mjs) ----------
 node "$PKG_DIR/tools/gen-index.mjs" "$REPO"
@@ -445,8 +445,17 @@ rm -f "$TS_SCRIPT"
 # model never touched, which is the same class of "unsatisfiable before any model starts" defect
 # fix round 2 already found and fixed once for port-facts.md's UNFILLED sections.
 git -C "$REPO" add -A
+# --no-verify: this is the fixture ORCHESTRATOR closing out scaffolding, not a team
+# member's real commit under review, so it must not be gated by the lefthook.yml this same
+# step just wrote. Found 2026-09-23: on any machine with a real `lefthook` binary on PATH AND a
+# repo-external `core.hooksPath` set globally (exactly the misconfiguration stage8-guards.mjs
+# guard 5 exists to flag), `lefthook run` auto-discovers this freshly-written lefthook.yml by
+# cwd alone -- no `lefthook install` needed -- and its serpens-commit-msg rule rejects this
+# very commit message for lacking a feat(TICKET) ticket, failing every downstream test that
+# depends on the fixture existing. Masked on most dev machines only because no real `lefthook`
+# + external hooksPath combination happened to be on PATH there.
 git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
-  commit --quiet -m "chore: serpens-sdd scaffolding (kit install, index, shim, lefthook) — fixture"
+  commit --quiet --no-verify -m "chore: serpens-sdd scaffolding (kit install, index, shim, lefthook) — fixture"
 
 # --- TASK.md -------------------------------------------------------------------------------
 cat > "$TARGET/TASK.md" <<'EOF'

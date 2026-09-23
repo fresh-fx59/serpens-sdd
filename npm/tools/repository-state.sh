@@ -18,6 +18,8 @@ EOF
 BC_SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]:-$0}")" && pwd)"
 # shellcheck source=./lib/branch-contract.sh
 source "$BC_SELF_DIR/lib/branch-contract.sh"
+# shellcheck source=./lib/delivery-contract.sh
+source "$BC_SELF_DIR/lib/delivery-contract.sh"
 
 MODE=${1:-}
 [ -n "$MODE" ] || { usage; exit 2; }
@@ -120,6 +122,11 @@ fi
 # mode: assert-change is the only mode that reads BC_*, but resolving the contract is cheap and
 # every mode having it loaded means a future mode never has to remember to do this first.
 bc_load "$CONVENTIONS" "$REPO"
+# The delivery contract's `integration-branch` (spec-org-facts-slice-delivery-2026-09-23.md §2b)
+# now formalizes what expected_base() below used to hardcode ad hoc — origin/develop if present,
+# else origin/HEAD. dc_load never fails on a missing/unanchored file (defaults apply), so this is
+# always safe to call before BASE is resolved.
+dc_load "" "$REPO"
 
 expected_base() {
   if [ -n "$BASE_OVERRIDE" ]; then
@@ -147,12 +154,11 @@ expected_base() {
     fi
   fi
 
-  if git -C "$REPO" show-ref --verify --quiet refs/remotes/origin/develop; then
-    printf 'develop\n'
-    return
-  fi
-  branch=$(git -C "$REPO" symbolic-ref --quiet --short refs/remotes/origin/HEAD 2>/dev/null || true)
-  branch=${branch#origin/}
+  # spec-org-facts-slice-delivery-2026-09-23.md §2b: `integration-branch` in serpens/delivery.md
+  # is now the source of this lookup. dc_resolved_integration_branch keeps the EXACT same
+  # detection order as the fallback (origin/develop if present, else origin/HEAD) when the field
+  # is unset, so an unconfigured estate sees no behaviour change.
+  branch=$(dc_resolved_integration_branch "$REPO" 2>/dev/null || true)
   if [ -n "$branch" ]; then printf '%s\n' "$branch"; return; fi
 
   echo "✗ cannot determine the required base branch" >&2

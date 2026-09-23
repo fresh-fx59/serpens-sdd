@@ -58,6 +58,7 @@ export function storePlan({ config, port, storeRoot, kitDir }) {
   lines.push(`  $ cp ${join(kitDir, 'templates', 'port-facts.md')} ${join(storeRoot, LAYOUT.portFacts)}`);
   lines.push(`  $ mkdir -p ${dirname(join(storeRoot, LAYOUT.branching))}`);
   lines.push(`  $ cp ${join(kitDir, 'templates', 'conventions-branching.md')} ${join(storeRoot, LAYOUT.branching)}`);
+  lines.push(`  $ cp ${join(kitDir, 'templates', 'conventions-delivery.md')} ${join(storeRoot, LAYOUT.delivery)}`);
   lines.push(`  $ write ${join(storeRoot, LAYOUT.shim)}   # the shim; no script copies, ever`);
   lines.push(`  $ ${openspec} init${openspecToolId(port) ? ` --tools ${openspecToolId(port)}` : ''}   # cwd=${storeRoot}`);
   lines.push(`  $ bash ${toolPath('openspec-root', lang)}   # cwd=${storeRoot}`);
@@ -226,7 +227,11 @@ export async function stage3(ctx) {
   recordWrite(`cp ${join(kitDir, 'templates', 'conventions-branching.md')} ${branchingDest}`, () => {
     copyFileSync(join(kitDir, 'templates', 'conventions-branching.md'), branchingDest);
   });
-  evidence.push(`templates installed: ${PLAIN_TEMPLATES.join(', ')}, ${LAYOUT.portFacts}, ${LAYOUT.branching}`);
+  const deliveryDest = join(storeRoot, LAYOUT.delivery);
+  recordWrite(`cp ${join(kitDir, 'templates', 'conventions-delivery.md')} ${deliveryDest}`, () => {
+    copyFileSync(join(kitDir, 'templates', 'conventions-delivery.md'), deliveryDest);
+  });
+  evidence.push(`templates installed: ${PLAIN_TEMPLATES.join(', ')}, ${LAYOUT.portFacts}, ${LAYOUT.branching}, ${LAYOUT.delivery}`);
 
   const shimPath = writeShim(storeRoot, { binPath: BIN_PATH });
   evidence.push(`shim written: ${shimPath}`);
@@ -305,6 +310,7 @@ export async function seedRepoFacts(ctx) {
   // the store's copy today.
   const seeds = [
     [join(kitDir, 'templates', 'conventions-branching.md'), join(repoRoot, LAYOUT.branching), LAYOUT.branching],
+    [join(kitDir, 'templates', 'conventions-delivery.md'), join(repoRoot, LAYOUT.delivery), LAYOUT.delivery],
   ];
   const gitignorePath = join(repoRoot, LAYOUT.gitignore);
 

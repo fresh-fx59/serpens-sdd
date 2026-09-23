@@ -59,6 +59,10 @@ export const LAYOUT = {
   testingStack: `${SERPENS_DIR}/testing-stack.md`,
   /** The branching and ticket-naming contract. Lives in the system store. */
   branching: `${SERPENS_DIR}/branching.md`,
+  /** The delivery-convention contract (forge word, who opens the PR, ticket topology, merge
+   * order/style, integration/release branch, archive timing, hand-off routing). Lives in the
+   * system store, same shape as `branching`. spec-org-facts-slice-delivery-2026-09-23.md. */
+  delivery: `${SERPENS_DIR}/delivery.md`,
   /** The agent-port facts. Lives in the system store. */
   portFacts: `${SERPENS_DIR}/port-facts.md`,
   /** Document templates the commands render from. */

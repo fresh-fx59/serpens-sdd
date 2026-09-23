@@ -17,6 +17,7 @@ export const TOOL_COMMANDS = {
   'split-brain': 'check-contract-split-brain.mjs',
   state: 'repository-state.sh',
   'git-naming': 'check-git-naming.sh',
+  delivery: 'delivery.sh',
   'openspec-root': 'check-openspec-root.sh',
   'sync-submodules': 'sync-submodules.sh',
   catalog: 'aggregate-index.mjs',

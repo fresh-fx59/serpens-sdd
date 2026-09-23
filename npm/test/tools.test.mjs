@@ -7,7 +7,7 @@ test('every subcommand points at a shipped script', () => {
   // 'verify-docs' is deliberately NOT here: it is the one subcommand implemented in the CLI
   // layer (src/cli/verify-docs.mjs) rather than wrapped from a vendored script — see
   // buildCommandTable's own comment and test/verify-docs.test.mjs.
-  assert.equal(Object.keys(TOOL_COMMANDS).length, 10);
+  assert.equal(Object.keys(TOOL_COMMANDS).length, 11);
   for (const name of Object.keys(TOOL_COMMANDS)) assert.ok(existsSync(toolPath(name)), name);
 });
 

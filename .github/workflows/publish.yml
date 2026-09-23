@@ -56,12 +56,33 @@ jobs:
           # git history rather than the working tree, so a shallow clone blinds it.
           fetch-depth: 0
 
-      - name: Install ripgrep
+      - name: Install ripgrep and PyYAML
         # tests/starter-contract-test.sh shells out to `rg` directly — it is not an npm
         # dependency, so `npm ci` can never provide it. The ubuntu-latest image does not carry
         # it by default; without this step the starter-contract suite fails every `rg` call as
         # a bare "command not found" and the release pipeline never gets past step 9.
-        run: sudo apt-get update && sudo apt-get install -y ripgrep
+        #
+        # python3-yaml (PyYAML): test/openspec-config.test.mjs's assertValidYaml helper shells
+        # out to `python3 -c "import yaml; ..."` to independently verify the config-editing code
+        # under test produces real, parseable YAML — deliberately a second parser, not the same
+        # JS library the production code uses. Found 2026-09-23 reproducing a CI-only failure in
+        # a matching ubuntu-bookworm container: 17 tests failed with
+        # `ModuleNotFoundError: No module named 'yaml'` because the bare Node.js Docker/runner
+        # image ships python3 without it. It is an on-disk fixture-verification dependency, not
+        # a package dependency, so nothing in package.json could have caught its absence.
+        run: sudo apt-get update && sudo apt-get install -y ripgrep python3-yaml
+
+      - name: Install lefthook
+        # An installed `lefthook` binary is exercised for real by test/stage6.test.mjs, the
+        # store-uninstall e2e suite and the coexistence gap tests — they shell out to the actual
+        # CLI (`lefthook install`, `lefthook version`) rather than a stub, on purpose, so a git
+        # hook wiring bug shows up against the real tool. Found 2026-09-23 the same way as the
+        # PyYAML gap above: reproducing this workflow's failure in a matching container showed
+        # every one of these tests dying on a bare "lefthook: command not found" — the
+        # ubuntu-latest image does not carry it, and nothing before this fix ever installed it in
+        # CI. `npm install -g lefthook` is npm's own documented install path and needs no
+        # apt repository.
+        run: npm install -g lefthook
 
       - name: Configure a git identity for this runner
         # test/e2e.test.mjs exercises src/storeregistry.mjs's real store-registration commit

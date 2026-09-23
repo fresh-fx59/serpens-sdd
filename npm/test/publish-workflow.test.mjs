@@ -159,3 +159,26 @@ test('the job timeout allows for the ~20-minute port regeneration inside release
   assert.ok(Number(m[1]) >= 45, `timeout-minutes is ${m[1]}, too short for gen-ports.mjs (~20 min) plus the shell suites`);
   assert.ok(Number(m[1]) <= 120, `timeout-minutes is ${m[1]}: a runaway job should be killed, not run for hours`);
 });
+
+// Found 2026-09-23 by reproducing this workflow's own step-20 failure in a matching
+// ubuntu-bookworm container: `bin/serpens-sdd.mjs`'s own suite needs a real `lefthook` binary
+// (stage6.test.mjs, the store-uninstall e2e suite, the coexistence gap tests) and a real
+// PyYAML (test/openspec-config.test.mjs's assertValidYaml, a second independent parser checking
+// the production YAML-editing code) — neither ships on the bare ubuntu-latest runner, and
+// nothing installed either before this fix, so `node --test` failed 28-50 cases in CI while
+// passing everywhere a developer machine happened to already have both tools. This test pins
+// the fix so it cannot silently regress if the workflow is edited again.
+test('lefthook and PyYAML are installed before the release pipeline runs (real-binary test deps ubuntu-latest does not ship)', () => {
+  const text = workflowText();
+  assert.match(text, /python3-yaml/, 'PyYAML must be installed — openspec-config.test.mjs shells out to python3 -c "import yaml"');
+  assert.match(text, /npm install -g lefthook/, 'a real lefthook binary must be installed — several suites exercise it directly, not a stub');
+
+  // Order matters: both installs must land before "Run the full release pipeline", or the
+  // pipeline's own `node --test` step (which needs them) runs first and fails anyway.
+  const pipelineAt = text.indexOf('Run the full release pipeline');
+  const lefthookAt = text.indexOf('npm install -g lefthook');
+  const pyyamlAt = text.indexOf('python3-yaml');
+  assert.ok(pipelineAt > 0 && lefthookAt > 0 && pyyamlAt > 0, 'all three markers must be present');
+  assert.ok(lefthookAt < pipelineAt, 'lefthook must be installed before the release pipeline step');
+  assert.ok(pyyamlAt < pipelineAt, 'PyYAML must be installed before the release pipeline step');
+});

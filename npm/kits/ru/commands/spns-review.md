@@ -4,7 +4,8 @@ serpens-version: 2026-09-23.1
 ---
 `<change-id>` — проверяемое изменение OpenSpec; `<openspec>` — вызов CLI OpenSpec, подставленный
 при установке.
-Проверь diff {{args}}. Следуй spns-code-review. Дай findings по важности
+Проверь diff {{args}} (branch/change request/change — слово для «change request» в этом окружении
+— `forge-word` из `<serpens-sdd> delivery --print-contract`). Следуй spns-code-review. Дай findings по важности
 (blocker / serious / minor), каждый с file:line и конкретным исправлением.
 0. СОСТОЯНИЕ: установи `REPO_ROOT="$(git rev-parse --show-toplevel)"`, выполни
    `<serpens-sdd> state inspect`. Для локальной ветки истории
@@ -21,4 +22,5 @@ serpens-version: 2026-09-23.1
 4. ЧЕСТНОСТЬ ТЕСТОВ: тест проверяет поведение сценария и упал бы при поломке функции.
 5. КОРРЕКТНОСТЬ: ошибки, границы сценариев, error handling, конкуренция общего состояния.
 6. DISPOSER: `<serpens-sdd> verify-docs`; любая ошибка — blocker.
-Не approve и не merge. Решение принимает человек. Если diff чистый, скажи одной строкой.
+Не approve и не merge — `review-may-merge` всегда `no`. Решение принимает человек. Если diff
+чистый, скажи одной строкой.

@@ -358,5 +358,32 @@ else
   fail "SETUP.md tells the agent to copy config/lefthook.yml.example without substituting <serpens-sdd> — every commit in that repo would fail"
 fi
 
+printf 'T14 manual-PR mode: no forge-CLI command, every "open ... change request" line is guarded\n'
+# spec-org-facts-slice-delivery-2026-09-23.md §8: the kit must never itself try to create a
+# change request — that is the operator's own environment default (pr-opened-by=human) and the
+# ONE mechanism enforcing it, since no pre-exec hook can cover every agent CLI (§2c item 13).
+if ! rg -n -i -- 'gh pr create|glab mr create|/pulls\b|merge_requests\b' "$KIT/commands" "$KIT/skills" >/dev/null; then
+  pass "no forge-CLI PR/MR-creation command anywhere in the kit"
+else
+  fail "a forge-CLI PR/MR-creation command was found in the kit"
+fi
+# Every line that talks about opening a change request must route through the one guarded
+# sentence (delivery --print-contract / --handoff, pr-opened-by branch) rather than assuming the
+# agent creates it. We assert this by requiring every "open ... PR" (EN) / "открой ... PR" (RU)
+# occurrence to sit within a few lines of a `delivery --handoff` or `delivery --print-contract`
+# mention, and that at least one such guarded occurrence exists per kit.
+open_pr_lines=$(rg -n -i 'open (it|\(or update\)|the (spec|store) (change request|PR))|открой|обнови( spec)? change request' "$KIT/commands" 2>/dev/null | wc -l | tr -d ' ')
+guarded_lines=$(rg -n -- 'delivery --handoff|delivery --print-contract' "$KIT/commands" 2>/dev/null | wc -l | tr -d ' ')
+if [ "${guarded_lines:-0}" -ge 5 ]; then
+  pass "kit commands route \"open the change request\" through delivery --print-contract/--handoff ($guarded_lines guarded reference(s))"
+else
+  fail "too few delivery --print-contract/--handoff references ($guarded_lines) for a manual-PR-safe kit"
+fi
+if rg -q -- 'do NOT create the (change request|PR)|НЕ создавай change request' "$KIT/commands"; then
+  pass "the fixed guarded sentence (do NOT create the change request) is present"
+else
+  fail "the fixed guarded sentence is missing from this kit's commands"
+fi
+
 printf '\nPASS=%s FAIL=%s\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ]

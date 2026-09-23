@@ -9,7 +9,7 @@ changes with tests stay trivial; trivial changes without tests become incidents.
 
 ## The two tiers
 FAST tier — the inner loop, run after EVERY green step, must stay in seconds.
-SLOW tier — run at TASK boundaries and before the PR, never inside the micro-loop.
+SLOW tier — run at TASK boundaries and before the change request (this estate's `forge-word`), never inside the micro-loop.
 
 Which test is which, and the command that runs each tier, are facts about THIS repository, not
 about this skill. Read `serpens/testing-stack.md` in the repository and follow it. If that file does

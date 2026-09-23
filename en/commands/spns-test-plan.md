@@ -82,8 +82,10 @@ carry that TODO once per plan, and do not invent a command.
    transport in `serpens/testing-stack.md` have them — retention and partitioning.
 6. Anything you could not verify becomes `TODO(<what>)`. Never fill a payload field or an expected
    value with a guess — an unmarked guess costs the tester a false failure.
-7. Post the plan as a COMMENT on the SAME ticket this spec was written on — for a cross-repo story
-   that is the repository's own child ticket. Do NOT create a separate test ticket: the testers
-   work inside that ticket and leave their findings there. If no tracker integration is
-   configured, print the plan ready to paste. Do not mark anything passed; the tester's additions
+7. `test-plan-posted-to` (from `<serpens-sdd> delivery --print-contract`) is
+   `same-ticket-comment` in every shipped shop: post the plan as a COMMENT on the SAME ticket this
+   spec was written on — for a cross-repo story that is the repository's own child ticket. Do NOT
+   create a separate test ticket: the testers work inside that ticket and leave their findings
+   there. If the field is `print-only`, or no tracker integration is configured, print the plan
+   ready to paste. Do not mark anything passed; the tester's additions
    outrank yours.

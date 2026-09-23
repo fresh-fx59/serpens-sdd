@@ -42,8 +42,10 @@ spns-debugging (any unexpected failure), spns-drill-down (any fact about the sys
    adding it is part of writing it. The commit subject form and the allowed types are the shop's,
    not yours: `<serpens-sdd> git-naming --print-contract <TICKET>` prints `commit-form`,
    `commit-types` and a ready `commit-example`. Write the subject in that form (`feat` for a
-   feature, `fix` for a defect), push to the story branch, open or update
-   the PR, and paste `git log --oneline -1` plus `git status --short` as evidence.
+   feature, `fix` for a defect), push to the story branch. Then, per `<serpens-sdd>
+   delivery --print-contract`: if `pr-opened-by=human`, run `<serpens-sdd> delivery --handoff`
+   and paste its output to the human verbatim — do NOT create the change request. If `agent`,
+   open or update it. Paste `git log --oneline -1` plus `git status --short` as evidence.
 7. Done = all boxes ticked + full test suite green + verify-docs green + the work committed and
    pushed. Never claim
    done without pasted evidence of the last test run.

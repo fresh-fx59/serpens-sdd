@@ -14,7 +14,7 @@ feature/ABCD-1234
 - `feature/` prefix, then the tracker ticket key.
 - Ticket key = uppercase project key, dash, number. `ABCD-1234`.
 - Nothing after the number. `feature/ABCD-1234-add-invoices` is rejected — the description belongs
-  in the commit message and the PR title, not the branch.
+  in the commit message and the change-request title, not the branch.
 - One change folder = one branch = one ticket. This is OpenSpec's team workflow (change = folder =
   branch) and what makes the tracker linkage work.
 

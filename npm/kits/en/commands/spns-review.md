@@ -2,7 +2,9 @@
 description: Structured pre-review of a diff before humans spend time (any role)
 serpens-version: 2026-09-23.1
 ---
-Review the diff of {{args}} (branch/PR/change). Follow skill spns-code-review throughout.
+Review the diff of {{args}} (branch/change request/change — the forge word for "change request"
+is this estate's `forge-word` from `<serpens-sdd> delivery --print-contract`). Follow skill
+spns-code-review throughout.
 `<change-id>` is the OpenSpec change under review; `<openspec>` is the OpenSpec CLI invocation setup
 resolved.
 Review in this order, report findings by severity
@@ -26,5 +28,6 @@ Review in this order, report findings by severity
    Flag tests that assert implementation details, tests weakened to pass, and scenarios with no test.
 5. CORRECTNESS: bugs, edge cases from the scenarios, error handling, concurrency on shared state.
 6. DISPOSER: run `<serpens-sdd> verify-docs`; any red is a blocker finding.
-Do NOT approve or merge anything — output findings only; humans decide. If the diff is clean,
-say so in one line; do not invent findings to look thorough.
+Do NOT approve or merge anything — `review-may-merge` is fixed at `no` in every estate; output
+findings only, humans decide. If the diff is clean, say so in one line; do not invent findings to
+look thorough.

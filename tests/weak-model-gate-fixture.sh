@@ -44,12 +44,28 @@ done
 
 LANG_CODE="en"
 TARGET=""
+# VARIANT selects which git shape the fixture builds on top of the SAME sample-service content:
+#   svc142         (default) — today's scenario (a): the operator's develop/master flow, a local
+#                  bare origin so `git push` works, but the change is NOT merged into
+#                  origin/develop — assert-archivable is expected to refuse.
+#   archive-ready  — scenario (b): the change is already merged into origin/develop (as a merged
+#                  PR would leave it), matching spec-org-facts-slice-delivery-2026-09-23.md §9(b)
+#                  — assert-archivable is expected to pass.
+# Scenario (b) itself (recorded handoff tip SHA, TASK.md QA-accepted wording, baseline) is the
+# delivery slice's job, not this fixture's — this flag only builds the git shape it needs.
+VARIANT="svc142"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --lang=*) LANG_CODE="${1#--lang=}" ;;
     --lang)
       [ "$#" -ge 2 ] || { echo "FATAL: --lang requires a language (en or ru)" >&2; exit 1; }
       LANG_CODE="$2"
+      shift
+      ;;
+    --variant=*) VARIANT="${1#--variant=}" ;;
+    --variant)
+      [ "$#" -ge 2 ] || { echo "FATAL: --variant requires svc142 or archive-ready" >&2; exit 1; }
+      VARIANT="$2"
       shift
       ;;
     *)
@@ -61,6 +77,10 @@ while [ "$#" -gt 0 ]; do
   case "$LANG_CODE" in
     en|ru) ;;
     *) echo "FATAL: unknown language '$LANG_CODE'; expected en or ru" >&2; exit 1 ;;
+  esac
+  case "$VARIANT" in
+    svc142|archive-ready) ;;
+    *) echo "FATAL: unknown --variant '$VARIANT'; expected svc142 or archive-ready" >&2; exit 1 ;;
   esac
   shift
 done
@@ -101,7 +121,10 @@ rm -rf "$REPO"
 mkdir -p "$REPO"
 
 # --- Step 1: throwaway target repo ------------------------------------------------------------
-git -C "$REPO" init --quiet -b main
+# Base branch is `develop` (the operator's integration branch, §2b item 1) — `expected_base()`
+# in tools/repository-state.sh prefers `origin/develop` when it exists, so both variants must
+# actually have one, not just a branch happening to be checked out.
+git -C "$REPO" init --quiet -b develop
 mkdir -p "$REPO/openspec/specs" "$REPO/openspec/changes" "$REPO/docs"
 # serpens/index.{json,md} + repo.txt are generated below (Step 1b) by the real gen-index.mjs,
 # not hand-written here — a hand-written index.md previously disagreed with what `index --check`
@@ -456,6 +479,75 @@ git -C "$REPO" add -A
 # + external hooksPath combination happened to be on PATH there.
 git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
   commit --quiet --no-verify -m "chore: serpens-sdd scaffolding (kit install, index, shim, lefthook) — fixture"
+
+# --- Step 3f: local bare origin, develop + master (spec-org-facts-slice-delivery-2026-09-23.md
+# §9) --------------------------------------------------------------------------------------
+# Both variants get a real `origin` so `git push` (part of scenario (a)'s own handoff step) has
+# somewhere to land, and so `state assert-archivable` can resolve a base branch at all (its
+# expected_base() needs refs/remotes/origin/develop or an equivalent symbolic HEAD — see
+# tools/repository-state.sh:150). `git init --bare` defaults a fresh repo's HEAD to
+# refs/heads/master, which never matches this fixture's develop-first flow, so the symref is
+# pointed explicitly (the trap the fixture-proto session hit and documented).
+ORIGIN_BARE="$TARGET/origin.git"
+git init --quiet --bare "$ORIGIN_BARE"
+git -C "$REPO" remote add origin "$ORIGIN_BARE"
+git -C "$REPO" push --quiet -u origin develop
+# `master` is the release branch (informational only per §9/§2b — no gate reads it), created
+# from the same tip so the operator's real two-branch shape exists on origin from the start.
+git -C "$REPO" branch -q master develop
+git -C "$REPO" push --quiet origin master
+git -C "$ORIGIN_BARE" symbolic-ref HEAD refs/heads/develop
+git -C "$REPO" remote set-head origin develop
+
+case "$VARIANT" in
+  archive-ready)
+    # Scenario (b): the change is already merged into origin/develop, as a merged PR would leave
+    # it (prototype mechanics, scratchpad/fixture-proto-result.md, rebuilt here on develop/master
+    # instead of the prototype's `main` placeholder). Story branch off develop, one commit,
+    # merged back (no-ff, simulating a merged GitHub PR), pushed, story branch deleted (the merge
+    # usually deletes it), HEAD lands back on develop == origin/develop exactly.
+    STORY_BRANCH="feature/svc-142-add-field"
+    git -C "$REPO" checkout --quiet -b "$STORY_BRANCH"
+    cat >> "$REPO/docs/README.md" <<'EOF'
+
+<!-- SVC-142 story branch commit (archive-ready fixture variant) -->
+EOF
+    git -C "$REPO" add -A
+    git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
+      commit --quiet --no-verify -m "docs(SVC-142): story branch placeholder commit — fixture"
+    git -C "$REPO" checkout --quiet develop
+    git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
+      merge --quiet --no-ff -m "Merge pull request #1 from $STORY_BRANCH (SVC-142) — fixture" "$STORY_BRANCH"
+    git -C "$REPO" push --quiet origin develop
+    git -C "$REPO" branch -q -D "$STORY_BRANCH"
+    echo "== fixture variant archive-ready: PR simulated merged into origin/develop; origin at $ORIGIN_BARE =="
+    ;;
+  svc142)
+    # Scenario (a): unchanged behavior — the change must NOT be merged into develop, so
+    # assert-archivable keeps refusing (archive is out of reach of this scenario, per §9(a)).
+    # Advance origin's develop by one commit that this checkout never fetches, simulating a
+    # teammate's unrelated merge landing on develop after this repo was cloned — this is what
+    # makes `origin/develop` a real remote-tracking ref whose tip this checkout does NOT already
+    # contain, so the ancestor check in assert-archivable has something concrete to refuse on
+    # (a checkout still sitting exactly on origin/develop's unmoved tip would trivially "contain"
+    # it and pass, which is not this scenario's claim).
+    ADVANCE_CLONE="$TARGET/.origin-advance-clone"
+    rm -rf "$ADVANCE_CLONE"
+    git clone --quiet "$ORIGIN_BARE" "$ADVANCE_CLONE"
+    git -C "$ADVANCE_CLONE" checkout --quiet develop
+    cat >> "$ADVANCE_CLONE/docs/README.md" <<'EOF'
+
+<!-- unrelated teammate commit landed on develop after this fixture's checkout (svc142 variant) -->
+EOF
+    git -C "$ADVANCE_CLONE" add -A
+    git -C "$ADVANCE_CLONE" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
+      commit --quiet --no-verify -m "chore: unrelated teammate commit on develop — fixture"
+    git -C "$ADVANCE_CLONE" push --quiet origin develop
+    rm -rf "$ADVANCE_CLONE"
+    git -C "$REPO" fetch --quiet origin
+    echo "== fixture variant svc142: origin.git at $ORIGIN_BARE, develop advanced upstream (unmerged, unfetched by design) =="
+    ;;
+esac
 
 # --- TASK.md -------------------------------------------------------------------------------
 cat > "$TARGET/TASK.md" <<'EOF'

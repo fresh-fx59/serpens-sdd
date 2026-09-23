@@ -356,7 +356,8 @@ For each path reported by `.gitmodules`:
    Two routes, never one. A living spec resolves with
    `openspec show <spec-id> --type spec --store <store-id>`, but ONLY after the contract change
    is archived. While that change is open — which is the whole cross-repo window, since the
-   contract merges last — the contract exists only inside its change folder and is read with
+   contract merges last (this estate's `merge-order`, from `<serpens-sdd> delivery
+   --print-contract`, ends in `store-contract`) — the contract exists only inside its change folder and is read with
    `openspec show <change-id> --type change --store <store-id> --json --deltas-only`. Verified
    against the CLI on 2026-08-26: the spec route exits 1 with
    `Spec '<id>' not found at <store>/openspec/specs/<id>/spec.md` before the archive, and the

@@ -30,6 +30,8 @@ CLI cannot tell you this, so check the story. If the proposal is not approved, S
    ```
    Each call returns the guidance and the exact output path for that artifact; write it, then run the
    next. Write no other artifact and do not continue into implementation.
+0. SCHEMA GATE, first, always. Run `<serpens-sdd> check-schema`. If it exits non-zero, STOP — do not read further, do not create anything — and report its output verbatim to the analyst; it names the unsupported schema, exactly where it was found, and that support is a deferred follow-up (see spec-skipspecs-and-custom-schemas-2026-09-11.md item 4b).
+
 1. Read the delta spec (a `skip_specs` change has none — skip this source, never create it),
    research.md, and the living specs it modifies. Read the CURRENT code of
    the affected modules (use spns-drill-down; append new verified facts to research.md).

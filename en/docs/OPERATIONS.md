@@ -65,8 +65,9 @@ predates versioning or is your own; `MODIFIED` means it carries a stamp but not 
    `verify` subcommand in OpenSpec 1.10.
 5. `spns-test-plan` and `spns-autotest`: derive checks from approved scenarios.
    `spns-test-plan` is **black-box**: the request or event to send, the expected response, and
-   the expected stored rows on the dev stand — posted as a comment on the
-   same ticket, never as a separate test task. `spns-autotest` is the in-code layer.
+   the expected stored rows on the dev stand — posted per `test-plan-posted-to` (from
+   `<serpens-sdd> delivery --print-contract`), `same-ticket-comment` by default, never a separate
+   test task. `spns-autotest` is the in-code layer.
 6. After merge, `spns-archive`: place the archive commit, then run OpenSpec archive.
    With no flag it asks you which of three placements to use and never picks for you; option (1)
    cuts a fresh story branch from the prepared base, named by
@@ -111,11 +112,13 @@ Do not use bulk checkout or reset commands.
 
 ## Cross-repository changes
 
-Use one parent ticket for the system-store contract and one child ticket per
-repository. Create the contract first. Repository delta specs link the contract
+`ticket-topology` (from `<serpens-sdd> delivery --print-contract`) is
+`parent-story+child-per-repo` in every shipped shop: use one parent ticket for the system-store
+contract and one child ticket per repository (`child-created-by` decides who creates them: `ask`,
+`analyst`, or `agent`). Create the contract first. Repository delta specs link the contract
 by store id and spec id; they do not restate its field shape. Approval order is
-contract first. Implementation and merge order are producer, consumers, then
-the store contract. A contract change stops all dependent work.
+contract first. Implementation and merge order are this estate's `merge-order`, default
+producer, consumers, then the store contract. A contract change stops all dependent work.
 
 Regenerate the central catalog after repository indexes are current:
 
@@ -172,8 +175,8 @@ git log --merges --since="90 days ago" --format=%cI | wc -l
 ls openspec/changes/archive 2>/dev/null | wc -l
 ```
 
-Squash-merge repositories have no merge commits: count merged pull-request subjects
-with `git log --grep` instead.
+Squash-merge repositories have no merge commits: count merged change-request (`forge-word`)
+subjects with `git log --grep` instead.
 
 Anti-gaming check, per archived change: the proposal must predate the first
 implementation commit on that branch.

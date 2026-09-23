@@ -344,6 +344,16 @@ each, and what it would do; nothing on disk changes until you pass `--apply`. Wo
 repo-local trial (the one repository) or a system store (run it from the store root; it walks
 every onboarded submodule).
 
+Both dry-run and `--apply` print a plain-language header first: what uninstall does and does not
+touch, a grouped summary of what **will be removed** (counts derived from the actual plan, e.g.
+`installed commands/skills: 15`), and what is **kept on purpose**
+(`serpens/testing-stack.md`/`serpens/port-facts.md`, `.serpens.yaml` markers, and any team-edited
+files that failed the owner check). Dry-run always ends with `Dry run — nothing changed. Re-run
+with --apply to remove.`. `--apply` ends with a completion note — a failure (if any) reported
+first, then counts removed/skipped/kept, the manual steps still to run (the store
+de-registration command from row 13, referenced again), a nudge to run `git status` and commit,
+and confirmation that `openspec list` still works.
+
 Every removal passes an owner check first — a marker, or a byte-identical match against the kit
 — never a guess. A file that fails the check is reported **"left in place, remove by hand"**,
 with the exact manual step. Concretely:

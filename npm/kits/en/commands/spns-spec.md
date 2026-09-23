@@ -31,9 +31,10 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    - MORE THAN ONE repo → is there a genuine shared contract (a shape or protocol crossing the
      boundary)? If NOT, say "not a cross-repo change; this is N independent stories" and stop —
      do not fan out. If YES, go to step 4.
-   Before creating any ticket, branch, commit or PR, state the plan and WAIT for the analyst:
-   which repos, which is the producer, which tickets already exist, which you would create, and
-   how many PRs this will open. Never fan out silently.
+   Before creating any ticket, branch, commit or change request, state the plan and WAIT for the
+   analyst: which repos, which is the producer, which tickets already exist, which you would
+   create, and how many change requests (`forge-word` from `<serpens-sdd> delivery
+   --print-contract`) this will open. Never fan out silently.
 
 3. SINGLE REPO. Place yourself BEFORE creating anything.
    a. TICKET GATE. The branch name is built from a real tracker key. If `{{args}}` carries none
@@ -122,15 +123,23 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    HANDOVER (do this yourself — the analyst never touches git): stage the change folder BY PATH
    (`git add openspec/changes/<change-id>`), never `git add -A` — the repository holds local-only
    settings and credential files that are not yours to commit, and a file you created is untracked
-   until you add it. Commit `docs(<TICKET>): <text>`, push, and
-   open (or update) the spec PR. Post the spec summary + PR link back to the story. Done.
+   until you add it. Commit `docs(<TICKET>): <text>`, push. Then, per `<serpens-sdd> delivery
+   --print-contract`: if `pr-opened-by=human`, run `<serpens-sdd> delivery --handoff` and paste
+   its output to the human verbatim — do NOT create the change request. If `agent`, open (or
+   update) it. Post the spec summary + the handoff (or the change-request link) back to the
+   story. Done.
 
 4. CROSS-REPO — TICKETS FIRST, driven by what already exists.
-   Look at the child tickets attached to the parent story.
+   `ticket-topology` (from `<serpens-sdd> delivery --print-contract`) is
+   `parent-story+child-per-repo` in every shipped shop: look at the child tickets attached to the
+   parent story.
    - Children already exist → use them. Map each child to its repo. If a repo has no child, or a
      child names no repo, STOP and ask the analyst — never guess an owner.
-   - No children exist → ask the analyst: "N repos are involved; shall I create one child story
-     per repo, or will you?" Follow the answer. If they create them, wait and re-read.
+   - No children exist → follow `child-created-by`: `ask` (default) — ask the analyst "N repos are
+     involved; shall I create one child story per repo, or will you?" and follow the answer;
+     `analyst` — tell the analyst which N child tickets are needed and wait, never create them
+     yourself; `agent` — create the N child tickets yourself through the tracker integration, one
+     per repo, and say so. If someone else creates them, wait and re-read.
    The PARENT story is the store-contract ticket — it does not get a child of its own.
 
 5. CONTRACT FIRST. WHERE YOU STAND DECIDES WHERE THE FILES LAND. Every path below is
@@ -168,8 +177,10 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    It must print `"deltaCount"` and the requirement text. No flag bypasses a missing `## Why` —
    `--requirements-only`, `--no-scenarios` and the deprecated `change show` all fail the same way. Run `<serpens-sdd> verify-docs` and
    `<openspec> validate <contract-change-id> --type change --strict --json`; fix until both are
-   green and `"valid": true`. Then commit, push, open the store PR, and
-   post its link on the parent story.
+   green and `"valid": true`. Then commit, push. Per `<serpens-sdd> delivery --print-contract`:
+   if `pr-opened-by=human`, run `<serpens-sdd> delivery --handoff` and paste its output to the
+   human verbatim — do NOT create the store change request. If `agent`, open it. Post its link
+   (or the handoff) on the parent story.
 
 6. PER REPO, one at a time. Each child ticket owns exactly one repository, and its artifacts live
    INSIDE that repository, never in the store:
@@ -198,8 +209,10 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
       runs `<openspec> instructions specs --change <change-id> --json` — those two only — until
       the proposal and that repo's OWN delta spec exist. The delta LINKS the store
       contract — never restates the shape — and carries BOTH fetch lines, because the two routes
-      never overlap: the store contract merges LAST, so while it is open it exists only inside its
-      change folder, and archiving it deletes that folder the moment the spec route starts working.
+      never overlap: the store contract merges LAST (this estate's `merge-order` from
+      `<serpens-sdd> delivery --print-contract` ends in `store-contract`), so while it is open it
+      exists only inside its change folder, and archiving it deletes that folder the moment the
+      spec route starts working.
       Write both, labelled, and record the contract CHANGE id next to the spec id — during the open
       window the spec id alone cannot resolve anything:
       ```text
@@ -238,16 +251,22 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    c. Run `<serpens-sdd> verify-docs`; fix until green. The split-brain lint must pass; if it
       fires you restated a contract fact — delete it and link instead. Then run
       `<openspec> validate <change-id> --type change --strict --json`; fix until `"valid": true`.
-   d. Stage the change folder by path, commit as `docs(<child-ticket>): <text>`, push, open the PR,
-      post the PR link to the ticket. Never `git add -A`; never leave the step uncommitted.
+   d. Stage the change folder by path, commit as `docs(<child-ticket>): <text>`, push. Then, per
+      `<serpens-sdd> delivery --print-contract`: if `pr-opened-by=human`, run `<serpens-sdd>
+      delivery --handoff` and paste its output to the human verbatim — do NOT create the change
+      request; post that handoff to the ticket. If `agent`, open it and post the link to the
+      ticket. Never `git add -A`; never leave the step uncommitted.
 
-7. GATES. On every implementation child record: approval order (contract first), implementation
-   order (producer first), merge order (producer → consumers → store contract last), and that a
-   contract change stops work in all repos. Mark each child blocked by the parent.
+7. GATES. On every implementation child record: approval order (contract first — a fixed kit
+   rule), implementation order (producer first), merge order (this estate's `merge-order` from
+   `<serpens-sdd> delivery --print-contract`, default `producer,consumers,store-contract`), and
+   that a contract change stops work in all repos. Mark each child blocked by the parent.
 
-8. On the parent story, post the ticket → repo → role map and the intended merge window.
+8. On the parent story, post the ticket → repo → role map and the intended merge window
+   (`link-posted-to` — the same place the handoff and test plan land).
 
-9. VERIFY before reporting: every child is linked and mapped to a repo; every repo has a branch,
-   a pushed commit and an open PR; verify-docs green and openspec `validate --strict` reporting
-   `"valid": true` in each. Paste the evidence.
+9. VERIFY before reporting: every child is linked and mapped to a repo; every repo has a branch, a
+   pushed commit, and an open change request OR a handoff printed when `pr-opened-by=human`;
+   verify-docs green and openspec `validate --strict` reporting `"valid": true` in each. Paste the
+   evidence.
    Never claim done without it.

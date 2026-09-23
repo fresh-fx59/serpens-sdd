@@ -357,8 +357,9 @@ git -C "$SERPENS_SYSTEM_STORE_ROOT" diff -- .gitmodules
 
    Маршрута всегда два. Живая спека читается как
    `openspec show <spec-id> --type spec --store <store-id>`, но ТОЛЬКО после архивации change
-   контракта. Пока он открыт — а это всё межрепозиторное окно, ведь контракт мержится последним —
-   контракт существует только внутри своей change-папки и читается как
+   контракта. Пока он открыт — а это всё межрепозиторное окно, ведь контракт мержится последним
+   (`merge-order` этого окружения из `<serpens-sdd> delivery --print-contract` заканчивается
+   `store-contract`) — контракт существует только внутри своей change-папки и читается как
    `openspec show <change-id> --type change --store <store-id> --json --deltas-only`. Проверено на
    CLI 2026-08-26: до архивации spec-маршрут выходит с кодом 1 и
    `Spec '<id>' not found at <store>/openspec/specs/<id>/spec.md`, после архивации change-маршрут

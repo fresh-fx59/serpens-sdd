@@ -161,9 +161,24 @@ test('uninstall dry-run changes no byte, then --apply reverses every reversible 
   assert.match(dry.printed, /row 9\]/);
   assert.match(dry.printed, /row 12\]/);
 
+  // Header: plain-language framing, grouped summary derived from the actual plan, what's kept.
+  assert.match(dry.printed, /Serpens uninstall removes only what Serpens installed\. OpenSpec, your openspec\/\s*\nchanges and specs stay untouched\./);
+  assert.match(dry.printed, /Will be removed in this repo:/);
+  assert.match(dry.printed, /serpens\/ folder: 1/);
+  assert.match(dry.printed, /installed commands\/skills: \d+/);
+  assert.match(dry.printed, /Kept on purpose:/);
+  assert.match(dry.printed, /serpens\/testing-stack\.md, serpens\/port-facts\.md/);
+  assert.match(dry.printed, /team-edited files, left in place \(\d+\):/);
+  assert.match(dry.printed, /Dry run — nothing changed\. Re-run with --apply to remove\./);
+
   const applied = await runUninstall(fixture, ['--apply']);
   assert.equal(applied.code, 0, applied.printed);
   assert.match(applied.printed, /APPLYING/);
+  assert.match(applied.printed, /Serpens uninstall removes only what Serpens installed\./);
+  assert.match(applied.printed, /Done: \d+ removed, \d+ skipped \(team-edited\/left in place\), \d+ kept on purpose\./);
+  assert.match(applied.printed, /Manual steps still to run \(see rows 13\/14 above\):/);
+  assert.match(applied.printed, /Next: run `git status`, review, and commit\./);
+  assert.match(applied.printed, /OpenSpec still works as usual — try `openspec list`\./);
 
   // Reversed.
   assert.equal(existsSync(join(repoRoot, 'lefthook.yml.example')), false);
@@ -194,6 +209,26 @@ test('uninstall dry-run changes no byte, then --apply reverses every reversible 
   // Facts kept as team knowledge (row 9), never removed without --include-history.
   assert.ok(existsSync(join(repoRoot, 'serpens', 'testing-stack.md')));
   assert.ok(existsSync(join(repoRoot, 'serpens', 'port-facts.md')));
+});
+
+test('uninstall dry-run on a repo with nothing Serpens-installed: header prints an empty summary, no false "team-edited"', async () => {
+  const root = mkdtempSync(join(tmpdir(), 'serpens-sdd-uninstall-empty-'));
+  initGitRepo(root);
+  const savedCwd = process.cwd();
+  const savedWrite = process.stdout.write.bind(process.stdout);
+  let printed = '';
+  process.stdout.write = (chunk, ...rest) => { printed += chunk; return savedWrite(chunk, ...rest); };
+  process.chdir(root);
+  let code;
+  try {
+    code = await uninstallMain([]);
+  } finally {
+    process.stdout.write = savedWrite;
+    process.chdir(savedCwd);
+  }
+  assert.equal(code, 0);
+  assert.match(printed, /Will be removed in this repo:\n\s*\(nothing found to remove\)/);
+  assert.match(printed, /team-edited files: none found/);
 });
 
 test('planRoot: git config keys are only listed when actually present', () => {

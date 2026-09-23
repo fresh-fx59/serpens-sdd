@@ -504,6 +504,90 @@ export function planRoot(root, { includeHistory = false, factsRoot } = {}) {
   return actions;
 }
 
+/** Human-readable label for one action's row-group, for the grouped "will be removed" summary
+ * printed before the row list. Rows 1/2/3 are lefthook, 4 is the port-instruction rule block, 5/6
+ * are openspec/config.yaml entries, 8 is .gitignore, 9 is the serpens/ folder, 10 is
+ * commands/skills, 12 is git config keys. Row 11 (change markers) and row 12's
+ * openspec-relocated-files informational entry are never counted as "will be removed" — they are
+ * either kept on purpose or merely reported. */
+function summaryGroup(action) {
+  if (!action.reversible) return null;
+  if (action.row === 1 || action.row === 3) return 'git hooks (lefthook)';
+  if (action.row === 4) return `rule block in ${action.id.slice('hard-rule:'.length)}`;
+  if (action.row === 5 || action.row === 6) return 'openspec/config.yaml entries';
+  if (action.row === 8) return '.gitignore';
+  if (action.row === 9) return 'serpens/ folder';
+  if (action.row === 10) return 'installed commands/skills';
+  if (action.row === 12 && action.id.startsWith('git-config:')) return 'git config keys';
+  return null;
+}
+
+/** Build the plain-language header printed before the row list, in both dry-run and --apply:
+ * what uninstall does and does not touch, a grouped summary of what WILL be removed (derived
+ * from the actual decided plan, not static text), and what is KEPT on purpose. */
+function buildHeader(allActions) {
+  const lines = [];
+  lines.push('Serpens uninstall removes only what Serpens installed. OpenSpec, your openspec/');
+  lines.push('changes and specs stay untouched.');
+  lines.push('');
+
+  const counts = new Map();
+  for (const action of allActions) {
+    const group = summaryGroup(action);
+    if (!group) continue;
+    counts.set(group, (counts.get(group) ?? 0) + 1);
+  }
+  lines.push('Will be removed in this repo:');
+  if (counts.size === 0) {
+    lines.push('  (nothing found to remove)');
+  } else {
+    for (const [group, count] of counts) {
+      lines.push(`  - ${group}: ${count}`);
+    }
+  }
+  lines.push('');
+
+  // "Team-edited" here means: something WAS found, but didn't pass the owner check (edited since
+  // install, or never byte-identical to what we would have written) — never "nothing existed".
+  const teamEdited = allActions.filter((a) => !a.reversible && a.row !== 11 && a.reason !== 'nothing to remove');
+  lines.push('Kept on purpose:');
+  lines.push('  - serpens/testing-stack.md, serpens/port-facts.md (real answers, not placeholders)');
+  lines.push('  - .serpens.yaml change markers (change history, unless --include-history)');
+  if (teamEdited.length === 0) {
+    lines.push('  - team-edited files: none found');
+  } else {
+    lines.push(`  - team-edited files, left in place (${teamEdited.length}):`);
+    for (const action of teamEdited) {
+      lines.push(`      ${action.id}${action.reason ? ` — ${action.reason}` : ''}`);
+    }
+  }
+  lines.push('');
+  return lines.join('\n');
+}
+
+/** Build the completion note printed after --apply: failures first (if any), then counts
+ * removed/skipped/kept, the manual commands still to run, and the OpenSpec-still-works note. */
+function buildCompletionNote(allActions, failures) {
+  const lines = [];
+  if (failures.length > 0) {
+    lines.push(`✗ ${failures.length} action(s) FAILED to apply — see the \`✗ apply failed\` lines above:`);
+    for (const f of failures) lines.push(`  - ${f.id}: ${f.error}`);
+    lines.push('');
+  }
+  const removed = allActions.filter((a) => a.reversible && !failures.some((f) => f.id === a.id));
+  const keptOnPurpose = allActions.filter((a) => !a.reversible && a.row === 11);
+  const skipped = allActions.filter((a) => !a.reversible && a.row !== 11);
+  lines.push(`Done: ${removed.length} removed, ${skipped.length} skipped (team-edited/left in place), ${keptOnPurpose.length} kept on purpose.`);
+  lines.push('');
+  lines.push('Manual steps still to run (see rows 13/14 above):');
+  lines.push('  - the store de-registration command printed above, if this project registered a system store');
+  lines.push('  - commit/push the store repo + submodule history yourself, if in store mode');
+  lines.push('');
+  lines.push('Next: run `git status`, review, and commit.');
+  lines.push('OpenSpec still works as usual — try `openspec list`.');
+  return lines.join('\n');
+}
+
 /** Rows 13/14 — never reversed by us; printed for the human. */
 function storeNotes(storeRoot, { storeId, storeRemote } = {}) {
   const lines = [];
@@ -559,9 +643,10 @@ export default async function main(argv = []) {
     return 0;
   }
 
-  let anyReversible = false;
+  // Plan every root FIRST, so the header's grouped summary reflects the actual decided plan
+  // rather than static text — the row list below is printed from these same per-root actions.
+  const perRootActions = new Map();
   for (const root of allRoots) {
-    process.stdout.write(`--- ${root} ---\n`);
     // Gap B: a submodule's own `serpens/port-facts.md` is never rendered in store mode — fall
     // back to the store's copy so row 10 can still reconstruct the substituted bytes.
     const factsRoot = root === storeRoot
@@ -581,6 +666,18 @@ export default async function main(argv = []) {
         }
       }
     }
+    perRootActions.set(root, actions);
+  }
+  const allActions = [...perRootActions.values()].flat();
+
+  process.stdout.write(buildHeader(allActions));
+  process.stdout.write('\n');
+
+  let anyReversible = false;
+  const failures = [];
+  for (const root of allRoots) {
+    process.stdout.write(`--- ${root} ---\n`);
+    const actions = perRootActions.get(root);
     for (const action of actions) {
       const status = action.reversible ? (apply ? 'APPLIED' : 'would apply') : 'left in place, remove by hand';
       process.stdout.write(`  [row ${action.row}] ${action.id}: ${action.description} — ${status}${action.reason ? ` (${action.reason})` : ''}\n`);
@@ -591,6 +688,7 @@ export default async function main(argv = []) {
           action.apply();
         } catch (err) {
           process.stdout.write(`      ✗ apply failed: ${err.message}\n`);
+          failures.push({ id: action.id, error: err.message });
         }
       }
     }
@@ -600,8 +698,11 @@ export default async function main(argv = []) {
   process.stdout.write('\n');
   if (!apply) {
     process.stdout.write(`dry run complete${anyReversible ? ' — pass --apply to execute the reversible rows above' : ''}.\n`);
+    process.stdout.write('Dry run — nothing changed. Re-run with --apply to remove.\n');
   } else {
-    process.stdout.write('uninstall applied. Review `git status` and commit yourself — nothing here commits or pushes.\n');
+    process.stdout.write('\n');
+    process.stdout.write(buildCompletionNote(allActions, failures));
+    process.stdout.write('\n');
   }
   return 0;
 }

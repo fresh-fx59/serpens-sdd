@@ -260,3 +260,152 @@ test('verifyOnlyRemoved negative control: a removal that also changed a surround
   const check = verifyOnlyRemoved(before, after, ['b', 'c'], '\n');
   assert.equal(check.ok, false);
 });
+
+// ---------------------------------------------------------------------------------------------
+// investigation-store-uninstall-test-2026-09-23.md — gap A (store root never reversed by
+// `main()`) and gap B (a submodule's own row-10 commands/skills are invisible because store
+// mode never renders `serpens/port-facts.md` per-submodule). These drive the real CLI `main()`
+// entry point against a store-topology install built by a real `init` run, closing exactly the
+// blind spot the investigation names: prior tests only ever called `planRoot()` directly, never
+// `main()` against a store root, and never checked a submodule's port-facts fallback.
+// ---------------------------------------------------------------------------------------------
+
+/** A plain bare remote with one commit and no openspec/ scaffolding — a real project repo. */
+function makeStoreProjectRemote(name) {
+  const bareDir = mkdtempSync(join(tmpdir(), `serpens-sdd-uninstall-store-proj-${name}-`));
+  execFileSync('git', ['init', '--bare', '-q', '-b', BASE, bareDir]);
+  const workDir = mkdtempSync(join(tmpdir(), `serpens-sdd-uninstall-store-proj-work-${name}-`));
+  initGitRepo(workDir);
+  writeFileSync(join(workDir, 'README.md'), `# ${name}\n`);
+  git(workDir, ['add', '-A']);
+  git(workDir, ['commit', '-q', '-m', 'initial commit']);
+  git(workDir, ['remote', 'add', 'origin', bareDir]);
+  git(workDir, ['push', '-q', 'origin', BASE]);
+  return bareDir;
+}
+
+/** A bare "system store" remote, pre-populated the way an established store already is. */
+function makeUninstallStoreRemote() {
+  const bareDir = mkdtempSync(join(tmpdir(), 'serpens-sdd-uninstall-store-remote-'));
+  execFileSync('git', ['init', '--bare', '-q', '-b', BASE, bareDir]);
+  const workDir = mkdtempSync(join(tmpdir(), 'serpens-sdd-uninstall-store-work-'));
+  initGitRepo(workDir);
+  writeFileSync(join(workDir, 'README.md'), '# store\n');
+  mkdirSync(join(workDir, 'openspec', 'specs'), { recursive: true });
+  mkdirSync(join(workDir, 'openspec', 'changes'), { recursive: true });
+  writeFileSync(join(workDir, 'openspec', 'specs', '.gitkeep'), '');
+  writeFileSync(join(workDir, 'openspec', 'changes', '.gitkeep'), '');
+  git(workDir, ['add', '-A']);
+  git(workDir, ['commit', '-q', '-m', 'initial commit']);
+  git(workDir, ['remote', 'add', 'origin', bareDir]);
+  git(workDir, ['push', '-q', 'origin', BASE]);
+  return bareDir;
+}
+
+/** Build a real store-topology install (store + one onboarded submodule `repo-a`), entirely
+ * offline via local bare `file://`-less remotes (plain absolute paths — no submodule protocol
+ * gate needed since these are ordinary local paths, not `file://` URLs), driving the real
+ * `initMain()` end to end (stage 0..9), exactly as e2e.test.mjs's `makeFixture` does. */
+async function makeStoreFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'serpens-sdd-uninstall-store-'));
+  const storeRemote = makeUninstallStoreRemote();
+  const storeRoot = join(root, 'store');
+  const repoRoot = join(root, 'repo');
+  initGitRepo(repoRoot);
+
+  const oss = fakeOpenspec(root, { version: '1.13.0' });
+  const lefthookBin = noopLefthook(root);
+  const projectRemote = makeStoreProjectRemote('repo-a');
+
+  const configPath = join(repoRoot, 'serpens-sdd.json');
+  writeFileSync(configPath, JSON.stringify({
+    schema_version: 1,
+    project: 'acme',
+    lang: 'en',
+    port: 'claude',
+    openspec: { invocation: 'openspec' },
+    store: { remote: storeRemote, base_branch: BASE, root: storeRoot },
+    repositories: [{ name: 'repo-a', url: projectRemote, base_branch: BASE }],
+    facts: { repository_source: 'manual' },
+  }, null, 2), 'utf8');
+
+  const savedCwd = process.cwd();
+  const savedEnv = { ...process.env };
+  process.chdir(repoRoot);
+  process.env.PATH = `${oss.binDir}:${lefthookBin}:${process.env.PATH}`;
+  process.env.GIT_ALLOW_PROTOCOL = 'file';
+  let code;
+  try {
+    code = await initMain(['--config', configPath, '--non-interactive']);
+  } finally {
+    process.chdir(savedCwd);
+    process.env = savedEnv;
+  }
+  assert.equal(code, 0, 'fixture setup: init must complete green');
+
+  return { root, storeRoot, submodulePath: join(storeRoot, 'submodules', 'repo-a'), oss, lefthookBin };
+}
+
+async function runStoreUninstall(fixture, argv) {
+  const savedEnv = { ...process.env };
+  process.env.PATH = `${fixture.oss.binDir}:${fixture.lefthookBin}:${process.env.PATH}`;
+  try {
+    return await uninstallMain(argv);
+  } finally {
+    process.env = savedEnv;
+  }
+}
+
+test('gap A: uninstall --repo <storeRoot> plans and applies the store root itself, not just submodules', async () => {
+  const fixture = await makeStoreFixture();
+
+  // Pre-conditions the investigation found: the store root has its own serpens/ tree, .claude
+  // commands/skills, and an openspec/config.yaml catalog — none of it visible to the OLD `main()`.
+  assert.ok(existsSync(join(fixture.storeRoot, 'serpens', 'port-facts.md')));
+  assert.ok(existsSync(join(fixture.storeRoot, '.claude', 'commands', 'spns', 'spec.md')));
+
+  const code = await runStoreUninstall(fixture, ['--repo', fixture.storeRoot, '--apply']);
+  assert.equal(code, 0);
+
+  // The fixed CLI must have reported and applied the store root's own tree.
+  assert.equal(existsSync(join(fixture.storeRoot, 'serpens', 'bin')), false,
+    'gap A: the store root serpens/ tree must be removed by --repo <storeRoot> --apply');
+  assert.equal(existsSync(join(fixture.storeRoot, '.claude', 'commands', 'spns', 'spec.md')), false,
+    'gap A: the store root\'s own installed commands must be removed');
+});
+
+test('gap A: dry-run against the store root alone (no submodule targets) is no longer "nothing to do"', async () => {
+  const fixture = await makeStoreFixture();
+  const printed = [];
+  const savedWrite = process.stdout.write.bind(process.stdout);
+  process.stdout.write = (chunk, ...rest) => { printed.push(String(chunk)); return savedWrite(chunk, ...rest); };
+  let code;
+  try {
+    code = await runStoreUninstall(fixture, ['--repo', fixture.storeRoot]);
+  } finally {
+    process.stdout.write = savedWrite;
+  }
+  assert.equal(code, 0);
+  const out = printed.join('');
+  assert.doesNotMatch(out, /nothing onboarded found here/,
+    'gap A: the store root itself is a valid uninstall target and must not be reported as empty');
+  assert.match(out, new RegExp(fixture.storeRoot.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('gap B: a submodule\'s own installed commands/skills are found via the store\'s port-facts.md fallback', async () => {
+  const fixture = await makeStoreFixture();
+
+  // Pre-condition the investigation found: no per-submodule port-facts.md.
+  assert.equal(existsSync(join(fixture.submodulePath, 'serpens', 'port-facts.md')), false,
+    'store mode never renders a per-submodule port-facts.md — the fixture must reproduce that');
+  assert.ok(existsSync(join(fixture.submodulePath, '.claude', 'commands', 'spns', 'spec.md')),
+    'the submodule must have its own installed commands (store-mode project scope)');
+
+  const code = await runStoreUninstall(fixture, ['--repo', fixture.submodulePath, '--apply']);
+  assert.equal(code, 0);
+
+  assert.equal(existsSync(join(fixture.submodulePath, '.claude', 'commands', 'spns', 'spec.md')), false,
+    'gap B: the submodule\'s own commands must be removed even without its own port-facts.md');
+  assert.equal(existsSync(join(fixture.submodulePath, '.claude', 'skills', 'spns-tdd', 'SKILL.md')), false,
+    'gap B: the submodule\'s own skills must be removed even without its own port-facts.md');
+});

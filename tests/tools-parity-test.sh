@@ -267,6 +267,26 @@ parity_case() {
   local script; script="$(old_script "$name")" || { fail "$label: no vendored reference bytes for $name in $VENDOR_DIR"; return; }
   local script_dir; script_dir="$(cd "$(dirname "$script")" && pwd)"
   local a b; a="$(fixture "${label}-a")"; b="$(fixture "${label}-b")"
+  # git-naming-branch: gap 1 of spec-openspec-coexistence-2026-09-22.md added
+  # is_serpens_work() scoping to check-git-naming.sh (see tools/check-git-naming.sh, tools/lib/
+  # ownership.sh) — the live tool only enforces the branch convention when the repo actually
+  # shows Serpens-owned work (a staged path under serpens/, or under a marked
+  # openspec/changes/<id>/). The bare `fixture()` repo has neither, so it exercised the
+  # "unchecked" path, which the frozen reference (pre-gap-1) cannot produce, and is not what
+  # this case exists to assert (branch-naming enforcement itself). Operator decision
+  # (spec-tools-parity-fix-2026-09-23.md, amended): rather than normalize the two strings apart,
+  # give this fixture a REAL Serpens-work signal — stage a serpens/-owned file in both a and b —
+  # so is_serpens_work() actually returns true on both sides and check-git-naming.sh runs its
+  # real branch-shape check (main is long-lived → "exempt from the feature/ rule"), which is
+  # exactly what the vendored reference also says for that path. No string normalization is
+  # needed for this label; every byte is compared as-is.
+  if [ "$label" = "git-naming-branch" ]; then
+    mkdir -p "$a/serpens" "$b/serpens"
+    printf '{}\n' > "$a/serpens/index.json"
+    printf '{}\n' > "$b/serpens/index.json"
+    git -C "$a" add serpens/index.json
+    git -C "$b" add serpens/index.json
+  fi
   local runner=bash
   case "$name" in *.mjs) runner=node ;; esac
   local out_a rc_a err_a out_b rc_b err_b
@@ -330,6 +350,55 @@ parity_case() {
   # usage dump) rather than re-demanding a usage string this edition deliberately extended.
   if [ "$label" = "state-bad-mode" ] || [ "$label" = "state-no-args" ]; then
     err_a="${err_a//bash repository-state.sh assert-change <TICKET> \[--repo <path>\] \[--allow-dirty\] \[--checkout\]/bash repository-state.sh assert-change <TICKET> [--repo <path>] [--allow-dirty] [--checkout] [--conventions <path>]}"
+    # spec-tools-parity-fix-2026-09-23.md (amended): repository-state.sh gained a whole new
+    # MODE, `mark-change` (records the branch a change was created under — is_serpens_work()
+    # above reads it back), after the reference was frozen. Rather than pin one more hard-coded
+    # string for this one mode, extend the CLASS: any `  bash repository-state.sh <mode> ...`
+    # usage line the LIVE tool's own stderr lists (err_b, the actual invocation this run just
+    # made) that the reference's usage block doesn't already contain gets appended. A future
+    # mode addition needs no new edit here — this reads the live tool's real usage text, not a
+    # frozen copy of it.
+    while IFS= read -r live_line; do
+      [ -n "$live_line" ] || continue
+      case "$err_a" in
+        *"$live_line"*) ;;
+        *) err_a="$err_a
+$live_line" ;;
+      esac
+    done < <(printf '%s\n' "$err_b" | grep '^  bash repository-state.sh ')
+  fi
+  # check-git-naming.sh gained a whole new MODE, `--print-contract` ("so the KIT PROMPTS stop
+  # restating the convention" — the live script's own header comment), after the reference was
+  # frozen. Same class as the mark-change addition above: extend the usage line by whatever
+  # modes the LIVE tool's own stderr (err_b) actually lists, pipe-separated, that the reference's
+  # single usage line doesn't already contain — rather than pin one more hard-coded string for
+  # this one mode. A future mode addition needs no new edit here.
+  if [ "$label" = "git-naming-bad-arg" ]; then
+    local live_usage ref_usage part new_usage
+    live_usage="$(printf '%s\n' "$err_b" | grep '^usage: check-git-naming.sh' | head -1)"
+    if [ -n "$live_usage" ]; then
+      IFS='|' read -ra __parity_modes <<< "$live_usage"
+      for part in "${__parity_modes[@]}"; do
+        part="$(printf '%s' "$part" | sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
+        [ -n "$part" ] || continue
+        case "$err_a" in
+          *"$part"*) ;;
+          *)
+            ref_usage="$(printf '%s\n' "$err_a" | grep '^usage: check-git-naming.sh' | head -1)"
+            if [ -n "$ref_usage" ]; then
+              new_usage="$ref_usage | $part"
+              # `${var/pattern/repl}` treats pattern as a GLOB, and this usage line contains
+              # literal `[`/`]` (e.g. `[name]`), which glob-matches as a character class and
+              # silently fails to match its own literal brackets — escape them first so this
+              # is a literal substitution, not a pattern match.
+              local ref_usage_escaped
+              ref_usage_escaped="$(printf '%s' "$ref_usage" | sed -e 's/[][\*?]/\\&/g')"
+              err_a="${err_a/$ref_usage_escaped/$new_usage}"
+            fi
+            ;;
+        esac
+      done
+    fi
   fi
   local diverged=()
   [ "$rc_a" = "$rc_b" ] || diverged+=("rc $rc_a vs $rc_b")

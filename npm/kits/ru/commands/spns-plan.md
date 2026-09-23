@@ -1,6 +1,6 @@
 ---
 description: Создать design и tasks утверждённого изменения по текущему коду
-serpens-version: 2026-09-21.1
+serpens-version: 2026-09-23.1
 ---
 Спланируй {{args}}. Следуй spns-drill-down и spns-verification.
 `{{args}}` — это `<change-id>`; `<openspec>` — вызов CLI OpenSpec, подставленный при установке.

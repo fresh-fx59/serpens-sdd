@@ -1,6 +1,6 @@
 ---
 description: Post-merge close-out — fold the delta into living specs, ADR, index (dev flow)
-serpens-version: 2026-09-21.1
+serpens-version: 2026-09-23.1
 ---
 Archive change {{args}}. Follow skill spns-verification (evidence for every step below).
 `{{args}}` is `<change-id> [--here | --branch <name>]`. The flag chooses WHERE the archive

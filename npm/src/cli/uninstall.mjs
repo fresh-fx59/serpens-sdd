@@ -100,6 +100,20 @@ export function resolveUninstallTargets(repoRoot) {
   return { topology: 'store', onboardedRoots: [repoRoot], storeRoot: null };
 }
 
+/** When `--repo` is pointed directly at a submodule checkout (its own nested `.git`, so
+ * `findGitRoot` stops there and `resolveUninstallTargets` never sees a `storeRoot`), the store
+ * root that rendered its `serpens/port-facts.md` is two path segments up, under `submodules/`.
+ * Detected structurally (`<storeRoot>/submodules/<name>`) plus a sanity check that the candidate
+ * actually looks like a store (its own `serpens/port-facts.md` present) — gap B fix, see
+ * investigation-store-uninstall-test-2026-09-23.md §2. Returns null when not applicable. */
+function detectStoreRootFromSubmodulePath(root) {
+  const submodulesDir = resolve(root, '..');
+  if (submodulesDir.split('/').filter(Boolean).pop() !== 'submodules') return null;
+  const candidate = resolve(submodulesDir, '..');
+  if (existsSync(join(candidate, LAYOUT.portFacts))) return candidate;
+  return null;
+}
+
 /** The port id recorded in a rendered `serpens/port-facts.md`, or null. */
 export function portIdFromFacts(root) {
   const path = join(root, LAYOUT.portFacts);
@@ -142,11 +156,15 @@ function findHardRuleRange(text) {
  * one action; the plan and the executor share the same decision so `--apply` can never diverge
  * from what dry-run printed.
  * @param {string} root
- * @param {{includeHistory?: boolean}} [opts]
+ * @param {{includeHistory?: boolean, factsRoot?: string}} [opts] `factsRoot`: in store topology,
+ *   the store root to fall back to for `serpens/port-facts.md` when `root` (a submodule) never
+ *   got its own copy rendered (store mode only renders one at the store root — gap B,
+ *   investigation-store-uninstall-test-2026-09-23.md §2) — without this, row 10 silently finds
+ *   zero actions for a submodule's own installed commands/skills.
  * @returns {Array<{row: number, id: string, description: string, ownerOk: boolean,
  *   reversible: boolean, reason?: string, manual?: string, apply?: Function}>}
  */
-export function planRoot(root, { includeHistory = false } = {}) {
+export function planRoot(root, { includeHistory = false, factsRoot } = {}) {
   const actions = [];
   const record = readInstallRecord(root);
 
@@ -352,8 +370,9 @@ export function planRoot(root, { includeHistory = false } = {}) {
   // recorded); a `serpens_sdd.invocation` override (rare) is not recoverable after the fact and
   // falls back to the ordinary shim invocation, which is what every install without an override
   // actually used.
-  const portId = portIdFromFacts(root);
-  const openspecToken = openspecTokenFromFacts(root);
+  const portId = portIdFromFacts(root) ?? (factsRoot && factsRoot !== root ? portIdFromFacts(factsRoot) : null);
+  const openspecToken = openspecTokenFromFacts(root)
+    ?? (factsRoot && factsRoot !== root ? openspecTokenFromFacts(factsRoot) : null);
   if (portId && openspecToken) {
     let port;
     try { port = loadPort({ id: portId }); } catch { port = null; }
@@ -409,7 +428,16 @@ export function planRoot(root, { includeHistory = false } = {}) {
             description: pristine ? `delete ${relInstalled} (pristine)` : `left in place — ${relInstalled} has been edited since install`,
             ownerOk: pristine,
             reversible: pristine,
-            ...(pristine ? { apply: () => unlinkSync(installedPath) } : { reason: 'MODIFIED' }),
+            ...(pristine ? {
+              apply: () => {
+                unlinkSync(installedPath);
+                // A skill file's own directory (`<skill_dir>/<name>/SKILL.md`) is ours too —
+                // remove it once it is empty, so uninstall never leaves an empty
+                // Serpens-created directory behind (real e2e, store-uninstall-e2e.test.mjs).
+                const parent = join(installedPath, '..');
+                if (existsSync(parent) && readdirSync(parent).length === 0) rmSync(parent, { recursive: true, force: true });
+              },
+            } : { reason: 'MODIFIED' }),
           });
         }
 
@@ -518,15 +546,28 @@ export default async function main(argv = []) {
   process.stdout.write(`serpens-sdd uninstall — ${apply ? 'APPLYING' : 'DRY RUN (default; pass --apply to execute)'}\n`);
   process.stdout.write(`topology: ${topology}; root(s): ${onboardedRoots.join(', ') || '(none found)'}\n\n`);
 
-  if (onboardedRoots.length === 0) {
+  // Gap A (investigation-store-uninstall-test-2026-09-23.md §2): in store topology, `storeRoot`
+  // itself has its own `serpens/` tree, port commands/skills, and `openspec/config.yaml` catalog
+  // to reverse — it is not one of `onboardedRoots` (stage 5 never onboards the store root the
+  // same way), but it must still get a plan and be applied. Processed as an extra root, always
+  // after the submodules, so `--repo <storeRoot>` no longer reports "nothing to do" when the
+  // store root's own install is the only thing present.
+  const allRoots = storeRoot ? [...onboardedRoots, storeRoot] : onboardedRoots;
+
+  if (allRoots.length === 0) {
     process.stdout.write('nothing onboarded found here — nothing to do.\n');
     return 0;
   }
 
   let anyReversible = false;
-  for (const root of onboardedRoots) {
+  for (const root of allRoots) {
     process.stdout.write(`--- ${root} ---\n`);
-    const actions = planRoot(root, { includeHistory });
+    // Gap B: a submodule's own `serpens/port-facts.md` is never rendered in store mode — fall
+    // back to the store's copy so row 10 can still reconstruct the substituted bytes.
+    const factsRoot = root === storeRoot
+      ? undefined
+      : storeRoot ?? detectStoreRootFromSubmodulePath(root) ?? undefined;
+    const actions = planRoot(root, { includeHistory, factsRoot });
     if (storeId) {
       const cfg = resolveConfigPath(root, existsSync);
       if (cfg.existed && storeRemote) {

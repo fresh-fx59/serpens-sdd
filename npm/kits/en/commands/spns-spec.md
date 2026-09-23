@@ -1,6 +1,6 @@
 ---
 description: Draft the delta spec(s) for a story via interview; fan out across repos when needed (analyst flow)
-serpens-version: 2026-09-21.1
+serpens-version: 2026-09-23.1
 ---
 You are drafting the spec for story {{args}}.
 `<change-id>` is the OpenSpec change folder name; `<openspec>` is the OpenSpec CLI invocation setup

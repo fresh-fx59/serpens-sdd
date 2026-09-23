@@ -203,6 +203,17 @@ test('the release runs exactly the suite command package.json declares', () => {
     `the release suite command drifted from package.json's: ${step.argv.join(' ')} vs ${declared.slice(1).join(' ')}`);
 });
 
+// npm provenance under OIDC trusted publishing requires `package.json.repository` to name the
+// exact GitHub repository the publish comes from (npm's own trusted-publishers docs). Without
+// it, `npm publish` still succeeds but ships with no provenance attestation — a silent
+// degradation nothing else in this suite would catch, since release.mjs never reads this field.
+test('package.json declares a repository field pointing at fresh-fx59/serpens-sdd (required for npm provenance under trusted publishing)', () => {
+  const pkg = JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf8'));
+  assert.ok(pkg.repository, 'package.json must declare a "repository" field');
+  assert.equal(pkg.repository.type, 'git');
+  assert.equal(pkg.repository.url, 'git+https://github.com/fresh-fx59/serpens-sdd.git');
+});
+
 test('the gen-ports step passes gen-ports.mjs the --openspec invocation it requires', () => {
   const steps = buildSteps({ dryRun: true });
   const step = steps.find((s) => s.label.startsWith('gen-ports.mjs'));

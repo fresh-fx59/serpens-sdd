@@ -1,7 +1,7 @@
 ---
 name: spns-debugging
 description: Systematic root-cause debugging. Use when a test fails unexpectedly or behavior contradicts the spec on a Serpens change (spns-* commands or a change with `.serpens.yaml`) — BEFORE attempting fixes.
-serpens-version: 2026-09-21.1
+serpens-version: 2026-09-23.1
 ---
 ## The law
 No fix before diagnosis. A fix without a named root cause is a guess; guesses that pass are the

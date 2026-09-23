@@ -1,6 +1,6 @@
 ---
 description: Создать delta spec истории; при необходимости разнести её по репозиториям
-serpens-version: 2026-09-21.1
+serpens-version: 2026-09-23.1
 ---
 Ты готовишь спеку для истории {{args}}. Следуй spns-drill-down и spns-verification.
 `<change-id>` — имя папки изменения OpenSpec; `<openspec>` — вызов CLI OpenSpec, подставленный при

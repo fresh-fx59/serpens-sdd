@@ -37,8 +37,10 @@ spns-debugging (any unexpected failure), spns-drill-down (any fact about the sys
    `git add -A`, `git add .` or `git commit -a`: the repository legitimately holds local-only
    settings, credential and scratch files that must never be committed, and an untracked file you
    did not create is not yours to stage. A file you created is untracked until you add it —
-   adding it is part of writing it. Commit with `feat(<TICKET>): <text>` (or `fix(`;
-   `<serpens-sdd> git-naming` enforces the type), push to `origin/feature/<TICKET>`, open or update
+   adding it is part of writing it. The commit subject form and the allowed types are the shop's,
+   not yours: `<serpens-sdd> git-naming --print-contract <TICKET>` prints `commit-form`,
+   `commit-types` and a ready `commit-example`. Write the subject in that form (`feat` for a
+   feature, `fix` for a defect), push to the story branch, open or update
    the PR, and paste `git log --oneline -1` plus `git status --short` as evidence.
 7. Done = all boxes ticked + full test suite green + verify-docs green + the work committed and
    pushed. Never claim

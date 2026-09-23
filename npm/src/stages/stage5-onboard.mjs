@@ -2,15 +2,24 @@ import {
   existsSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, realpathSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { resolveTool, toolPath } from '../cli/tools.mjs';
-import { writeShim, resolveCallRoute, renderLefthook } from '../shim.mjs';
+import { writeShim, resolveCallRoute, renderLefthook, findLefthookConfigs, LEFTHOOK_MARKER } from '../shim.mjs';
 import { resolveScope, assertLintScope } from '../scope.mjs';
 import { readGitmodules } from '../inventory.mjs';
 import { splitInvocation } from '../invocation.mjs';
 import { runVerifyDocs } from '../cli/verify-docs.mjs';
-import { declareStoreReference, resolveConfigPath } from '../openspecconfig.mjs';
+import { SHIM_INVOCATION } from '../shim.mjs';
+import {
+  declareArtifactRules, declareContextCatalog, declareStoreReference, resolveConfigPath,
+  inspectConfig,
+} from '../openspecconfig.mjs';
+import { artifactRules, contextCatalog } from '../factfiles.mjs';
+import { LAYOUT, SERPENS_DIR } from '../layout.mjs';
+import { recordInstalledFile } from '../installrecord.mjs';
+import { openspecToolId } from '../ports.mjs';
+import { snapshotOpenspecToolDir, relocateAfterOpenspecRun } from '../openspec-tool-relocate.mjs';
 
 const BIN_PATH = fileURLToPath(new URL('../../bin/serpens-sdd.mjs', import.meta.url));
 
@@ -18,33 +27,207 @@ const BIN_PATH = fileURLToPath(new URL('../../bin/serpens-sdd.mjs', import.meta.
 // repository — a subset of the six templates the store gets (no store-contract.md there).
 const SPOKE_TEMPLATES = ['adr.md', 'research.md', 'testing-stack.md'];
 
-const HARD_RULE_MARKER = '## HARD RULE — disposer self-check';
-const HARD_RULE_BLOCK = `${HARD_RULE_MARKER}
-After creating or editing ANY file under openspec/ or docs/, run:
-    "$(git rev-parse --show-toplevel)"/tools/serpens-sdd verify-docs
+export const HARD_RULE_MARKER = '## HARD RULE — disposer self-check';
+// Bump this whenever HARD_RULE_BLOCKS' body text changes. appendHardRuleOnce reads the marker
+// comment carrying this version out of an existing block: a mismatch means the block is stale
+// prose from an older release and gets replaced in place; a match means it is already current
+// and is left untouched (never duplicated, never rewritten for no reason).
+const HARD_RULE_VERSION = '2026-09-23.1';
+const HARD_RULE_VERSION_MARKER = `<!-- serpens-sdd:hard-rule-version ${HARD_RULE_VERSION} -->`;
+
+// gap 4, serpens-openspec-coexistence-gaps-2026-09-22.md: scoped to SERPENS OWNED work only —
+// serpens/ itself, or an openspec/changes/<id>/ that carries a .serpens.yaml marker (step 2). A
+// hand-made, unmarked OpenSpec change is explicitly carved out, so a team's own vanilla work
+// never trips this rule.
+export const HARD_RULE_BLOCKS = {
+  en: `${HARD_RULE_MARKER}
+${HARD_RULE_VERSION_MARKER}
+After creating or editing a file under ${SERPENS_DIR}/, or under an openspec/changes/<id>/ that
+has a .serpens.yaml, run:
+    ${SHIM_INVOCATION} verify-docs
 Fix every ✗ (each error carries a remediation hint) and re-run until green
 BEFORE reporting work done or proposing a commit. Rejected writes are corrected
 by regenerating the content — never by loosening caps or deleting checks.
+Hand-made OpenSpec changes (no .serpens.yaml) are not Serpens work: do not run this for them.
 CIRCUIT BREAKER: if the same error survives 3 fix attempts, STOP and ask a human —
 do not keep looping.
-`;
+`,
+  ru: `${HARD_RULE_MARKER}
+${HARD_RULE_VERSION_MARKER}
+После создания или редактирования файла в ${SERPENS_DIR}/, или в openspec/changes/<id>/, у
+которого есть .serpens.yaml, запустите:
+    ${SHIM_INVOCATION} verify-docs
+Исправляйте каждый ✗ (у каждой ошибки есть подсказка по исправлению) и запускайте снова, пока
+не станет зелено, — ПЕРЕД тем, как отчитаться о готовности работы или предложить коммит.
+Отклонённые записи исправляются регенерацией содержимого — никогда ослаблением лимитов или
+удалением проверок.
+Обычные изменения OpenSpec без .serpens.yaml — не работа Serpens: не запускайте это для них.
+CIRCUIT BREAKER: если одна и та же ошибка не устраняется за 3 попытки исправления,
+ОСТАНОВИТЕСЬ и спросите человека — не зацикливайтесь.
+`,
+};
 
 /**
- * Append the disposer HARD RULE to a port's instruction file, exactly once. Creates the file
- * if it does not yet exist (a freshly-added submodule has no port scaffold of its own before
- * this).
- * @param {string} path
+ * The half-open [start, end) range of the existing HARD RULE block inside `text`, from its
+ * marker heading up to (not including) the next top-level (`## `) heading, or EOF if there is
+ * none. Returns null when the marker is absent.
+ * @param {string} text
+ * @returns {{start: number, end: number} | null}
  */
-function appendHardRuleOnce(path) {
+function findHardRuleRange(text) {
+  const start = text.indexOf(HARD_RULE_MARKER);
+  if (start === -1) return null;
+  const nextHeadingAt = text.indexOf('\n## ', start + HARD_RULE_MARKER.length);
+  const end = nextHeadingAt === -1 ? text.length : nextHeadingAt + 1;
+  return { start, end };
+}
+
+/**
+ * Append (or, if a stale version is present, replace in place) the disposer HARD RULE in a
+ * port's instruction file. Creates the file if it does not yet exist (a freshly-added submodule
+ * has no port scaffold of its own before this). A block already at the current
+ * `HARD_RULE_VERSION` is left byte-identical — this is what keeps a second run a no-op.
+ * @param {string} path
+ * @param {'en'|'ru'} [lang]
+ */
+export function appendHardRuleOnce(path, lang = 'en') {
+  const block = HARD_RULE_BLOCKS[lang] ?? HARD_RULE_BLOCKS.en;
   if (!existsSync(path)) {
-    writeFileSync(path, HARD_RULE_BLOCK, 'utf8');
+    writeFileSync(path, block, 'utf8');
     return true;
   }
   const existing = readFileSync(path, 'utf8');
-  if (existing.includes(HARD_RULE_MARKER)) return false;
-  const sep = existing.endsWith('\n') ? '\n' : '\n\n';
-  writeFileSync(path, `${existing}${sep}${HARD_RULE_BLOCK}`, 'utf8');
+  const range = findHardRuleRange(existing);
+  if (!range) {
+    const sep = existing.endsWith('\n') ? '\n' : '\n\n';
+    writeFileSync(path, `${existing}${sep}${block}`, 'utf8');
+    return true;
+  }
+  const current = existing.slice(range.start, range.end);
+  if (current === block) return false;
+  const replaced = existing.slice(0, range.start) + block + existing.slice(range.end);
+  writeFileSync(path, replaced, 'utf8');
   return true;
+}
+
+// WHY WE DO NOT ALWAYS RUN `openspec init`.
+//
+// `openspec init` runs `handleLegacyCleanup` before anything else (OpenSpec 1.13.1,
+// `dist/core/init.js:113`). When it finds legacy artifacts — legacy marker blocks inside a
+// team's `CLAUDE.md`/`AGENTS.md`, `.claude/commands/openspec/`-style directories, GLOBAL legacy
+// prompt files in the USER'S HOME, `openspec/AGENTS.md`, `openspec/project.md`
+// (`dist/core/legacy-cleanup.js:185-193`) — it normally asks a human
+// "Upgrade and clean up legacy files?" (`init.js:337-341`).
+//
+// It cannot ask inside our run. `canPromptInteractively()` returns false whenever `--tools` is
+// passed (`init.js:223-229`), and we spawn `openspec` as a child process with captured output,
+// so `process.stdin.isTTY` is false regardless (`dist/utils/interactive.js:12-21`). It therefore
+// takes the AUTO-CLEAN branch silently (`init.js:330-336`): it rewrites the team's instruction
+// files and deletes files, some of them under the user's HOME
+// (`legacy-cleanup.js:565-583`). There is no opt-out — `init`'s only related flag is `--force`,
+// "Auto-cleanup legacy files without prompting" (`dist/cli/index.js:169`).
+//
+// That is a question we must not answer on a team's behalf. So: `openspec/` absent means the
+// repository has never been initialized and the cleanup cannot have anything to find — run init.
+// `openspec/` present means the repository already uses OpenSpec — skip init entirely, assert
+// the few things the rest of stage 5 depends on, and if one is missing hand the exact command
+// to the human instead of running it for them.
+//
+// `openspec/` is deliberately the same signal OpenSpec itself uses to tell "extend" from
+// "greenfield" (`init.js:216`, `extendMode = await FileSystemUtils.directoryExists(openspecPath)`).
+// We do NOT re-implement its legacy DETECTION: that module is large and changes between minors,
+// and a copy of it here would rot silently.
+
+/** The directory whose presence means "this repository already uses OpenSpec". */
+const OPENSPEC_DIR = 'openspec';
+
+/**
+ * What stage 5 needs from an OpenSpec root that already exists, checked without running
+ * `openspec init`. The directory list is OpenSpec's own (`dist/core/init.js:613-624`); the
+ * config rule matches what init does with a config already on disk — it returns `'exists'` and
+ * never touches it (`:810-817`), so a present, parseable config is all we require.
+ * @param {string} repoRoot
+ * @returns {{ok: boolean, missing: string[]}}
+ */
+export function inspectExistingOpenspec(repoRoot) {
+  const missing = [];
+  for (const dir of [['specs'], ['changes'], ['changes', 'archive']]) {
+    if (!existsSync(join(repoRoot, OPENSPEC_DIR, ...dir))) {
+      missing.push(`${OPENSPEC_DIR}/${dir.join('/')}/ (directory does not exist)`);
+    }
+  }
+  const resolved = resolveConfigPath(repoRoot, existsSync);
+  if (!resolved.existed) {
+    missing.push(`${OPENSPEC_DIR}/config.yaml or ${OPENSPEC_DIR}/config.yml (neither exists)`);
+  } else {
+    let text;
+    try {
+      text = readFileSync(resolved.path, 'utf8');
+    } catch (err) {
+      text = null;
+      missing.push(`${relative(repoRoot, resolved.path)} (cannot be read: ${err.message})`);
+    }
+    if (text !== null) {
+      const parsed = inspectConfig(text);
+      if (!parsed.ok) missing.push(`${relative(repoRoot, resolved.path)} (does not parse as YAML: ${parsed.reason})`);
+    }
+  }
+  return { ok: missing.length === 0, missing };
+}
+
+/**
+ * The message a human gets when a pre-existing `openspec/` is incomplete. It names every missing
+ * thing and hands over the one command to run BY HAND — with the prompt warning, because that
+ * prompt is the whole reason we are not running it ourselves.
+ * @param {string} name
+ * @param {string[]} missing
+ * @param {string} openspecInvocation - e.g. `npx @fission-ai/openspec@1.13.1`
+ * @param {string|undefined} portId
+ * @param {string} repoRoot
+ * @returns {string}
+ */
+export function incompleteOpenspecMessage(name, missing, openspecInvocation, portId, repoRoot) {
+  const cmd = `${openspecInvocation} init${portId ? ` --tools ${portId}` : ''}`;
+  return [
+    `${name}: ${OPENSPEC_DIR}/ already exists, so Serpens did NOT run \`openspec init\` — but that`,
+    'OpenSpec root is incomplete. Missing:',
+    ...missing.map((m) => `  - ${m}`),
+    '',
+    'Run this yourself, in that repository:',
+    `    cd ${repoRoot}`,
+    `    ${cmd}`,
+    '',
+    'It may ask "Upgrade and clean up legacy files?". Answer it yourself — it can rewrite your',
+    "CLAUDE.md/AGENTS.md and delete files, including some in your home directory, and Serpens",
+    'will not answer that question for you. Then re-run Serpens.',
+  ].join('\n');
+}
+
+/**
+ * Decide which of the three lefthook.yml ownership branches (gap 8) a repository falls into,
+ * WITHOUT writing anything — the same decision drives both the dry-run plan and the real pass,
+ * so they can never disagree.
+ *   - 'write': no lefthook config present at all -> write `lefthook.yml`, marked, `lefthook install`.
+ *   - 'regenerate': the ONLY config present is our own marked `lefthook.yml` -> rewrite it in place.
+ *   - 'manual': any other main config is present (unmarked `lefthook.yml`, or any of the other
+ *     14 names, or more than one config) -> write ours to `serpens/lefthook.yml` and leave an
+ *     `extends:` line for the team to add by hand; never run `lefthook install` ourselves.
+ * @param {string} submodulePath
+ * @returns {{mode: 'write'|'regenerate'|'manual', path: string, theirs?: string}}
+ */
+function planLefthook(submodulePath) {
+  const configs = findLefthookConfigs(submodulePath);
+  const mainPath = join(submodulePath, 'lefthook.yml');
+  if (configs.length === 0) {
+    return { mode: 'write', path: mainPath };
+  }
+  if (configs.length === 1 && configs[0] === 'lefthook.yml') {
+    const existing = readFileSync(mainPath, 'utf8');
+    if (existing.startsWith(LEFTHOOK_MARKER)) {
+      return { mode: 'regenerate', path: mainPath };
+    }
+  }
+  return { mode: 'manual', path: join(submodulePath, LAYOUT.lefthookFallback), theirs: configs[0] };
 }
 
 /**
@@ -74,24 +257,61 @@ export function onboardPlan(ctx, submodulePath) {
   const { cmd: indexCmd, args: indexArgs } = resolveTool('index', [], lang);
   const route = resolveCallRoute({ repoRoot: submodulePath, hasNodeModules: false, shimAvailable: true });
   const lines = [`dry-run: would onboard ${submodulePath} (nothing below is executed):`];
-  lines.push(`  $ ${openspec} init${port?.id ? ` --tools ${port.id}` : ''}   # cwd=${submodulePath}`);
+  // Which of the two branches step 1 would take, decided by the SAME signal the real pass uses
+  // (does `openspec/` exist?), so a dry run over a mixed set of repositories says, per
+  // repository, whether `openspec init` would run at all. Nothing here is executed or written.
+  if (existsSync(join(submodulePath, OPENSPEC_DIR))) {
+    const found = inspectExistingOpenspec(submodulePath);
+    lines.push(`  # ${OPENSPEC_DIR}/ already exists → would SKIP \`openspec init\` (its legacy-cleanup prompt is the team's to answer)`);
+    if (found.ok) {
+      lines.push(`  $ assert ${OPENSPEC_DIR}/specs/, ${OPENSPEC_DIR}/changes/, ${OPENSPEC_DIR}/changes/archive/ and the config → all present`);
+    } else {
+      lines.push(`  ✗ would STOP: incomplete OpenSpec root — ${found.missing.join('; ')}`);
+      lines.push(`    run by hand in ${submodulePath}: ${openspec} init${openspecToolId(port) ? ` --tools ${openspecToolId(port)}` : ''}`);
+    }
+  } else {
+    lines.push(`  # no ${OPENSPEC_DIR}/ yet → greenfield`);
+    lines.push(`  $ ${openspec} init${openspecToolId(port) ? ` --tools ${openspecToolId(port)}` : ''}   # cwd=${submodulePath}`);
+  }
   lines.push(`  $ bash ${tool('check-openspec-root.sh')}   # must report ${submodulePath}, not the store`);
-  lines.push(`  $ bash ${tool('repository-state.sh')} prepare-base --repo ${submodulePath} --base <.gitmodules branch>`);
+  const repoLocal = ctx.topology === 'repo-local';
+  if (repoLocal) {
+    lines.push(`  $ git rev-parse --verify --quiet refs/heads/${config.repo.base_branch}   # or refs/remotes/origin/${config.repo.base_branch}; read-only, no checkout, no fetch`);
+    lines.push(`  $ git config serpens.baseBranch ${config.repo.base_branch}`);
+  } else {
+    lines.push(`  $ bash ${tool('repository-state.sh')} prepare-base --repo ${submodulePath} --base <.gitmodules branch>`);
+  }
   lines.push(`  scope: ${(port?.scope_preference ?? []).join(' -> ')}; on user scope also `
     + '$ git config serpens.agentDir <rel> plus the planted-probe lint proof');
-  lines.push(`  $ write ${join(submodulePath, 'openspec', 'repo.txt')}`);
-  lines.push(`  $ mkdir -p ${join(submodulePath, 'openspec', 'adr')} and write its .gitkeep`);
+  lines.push(`  $ write ${join(submodulePath, LAYOUT.repoTxt)}`);
+  if (repoLocal) lines.push(`  $ write ${join(submodulePath, LAYOUT.topology)}   # repo-local`);
+  lines.push(`  $ mkdir -p ${join(submodulePath, LAYOUT.adrDir)} and write its .gitkeep`);
   lines.push(`  $ ${indexCmd} ${indexArgs.join(' ')}`);
   lines.push('  $ serpens-sdd verify-docs (index --check, lint, split-brain, then the UNFILLED gate)');
-  lines.push(`  $ write ${join(submodulePath, 'lefthook.yml')}   # run: ${route.invocation} …`);
-  lines.push('  $ lefthook install');
-  lines.push(`  $ cp ${join(kitDir, 'system-store-template', '.gitignore')} ${join(submodulePath, '.gitignore')}   # only when absent`);
-  lines.push(`  $ write ${join(submodulePath, 'openspec', 'config.yaml')}   # references: id ${config?.store?.id} + remote ${config?.store?.remote}`);
+  const lefthookPlan = planLefthook(submodulePath);
+  if (lefthookPlan.mode === 'write') {
+    lines.push(`  $ write ${lefthookPlan.path}   # marked, run: ${route.invocation} …`);
+    lines.push('  $ lefthook install');
+  } else if (lefthookPlan.mode === 'regenerate') {
+    lines.push(`  $ regenerate ${lefthookPlan.path}   # our marked file, run: ${route.invocation} …`);
+    lines.push('  $ lefthook install');
+  } else {
+    lines.push(`  # ${lefthookPlan.theirs} already present in ${submodulePath} — not our file`);
+    lines.push(`  $ write ${lefthookPlan.path}   # ours; run: ${route.invocation} …`);
+    lines.push(`    manual: add to ${join(submodulePath, lefthookPlan.theirs)}:  extends:\n    - serpens/lefthook.yml`);
+    lines.push('  # lefthook install NOT run — the team owns their hooks');
+  }
+  lines.push(`  $ cp ${join(kitDir, 'system-store-template', 'gitignore.template')} ${join(submodulePath, '.gitignore')}   # only when absent`);
+  if (repoLocal) {
+    lines.push(`  # ${join(submodulePath, 'openspec', 'config.yaml')}: references: skipped — repo-local has no store; context catalog + rules as normal`);
+  } else {
+    lines.push(`  $ write ${join(submodulePath, 'openspec', 'config.yaml')}   # references: id ${config?.store?.id} + remote ${config?.store?.remote}`);
+  }
   lines.push(`  $ append the disposer HARD RULE to ${join(submodulePath, port?.instruction_file ?? '(no instruction_file)')}   # exactly once`);
   for (const file of SPOKE_TEMPLATES) {
-    lines.push(`  $ cp ${join(kitDir, 'templates', file)} ${join(submodulePath, 'templates', file)}`);
+    lines.push(`  $ cp ${join(kitDir, 'templates', file)} ${join(submodulePath, LAYOUT.templates, file)}`);
   }
-  lines.push(`  $ write ${join(submodulePath, 'tools', 'serpens-sdd')}   # the shim; no tools/ script copies, ever`);
+  lines.push(`  $ write ${join(submodulePath, LAYOUT.shim)}   # the shim; no script copies, ever`);
   return lines;
 }
 
@@ -117,7 +337,10 @@ export async function onboardOne(ctx, submodulePath) {
     return { ok: true, evidence };
   }
 
-  const name = basename(submodulePath);
+  // Repo-local topology (step 6, gap 3): the ONE repository is onboarded directly — its name
+  // and base branch come from `config.repo`, never from a store's .gitmodules (there is none).
+  const repoLocal = ctx.topology === 'repo-local';
+  const name = repoLocal ? config.repo.name : basename(submodulePath);
   const runOpts = { log };
 
   async function step(cmd, args, opts = {}) {
@@ -135,29 +358,71 @@ export async function onboardOne(ctx, submodulePath) {
 
   // Resolve this submodule's base branch from the store's own .gitmodules — onboardOne takes
   // only (ctx, submodulePath), so it looks its row up rather than requiring a third argument.
-  let rows;
-  try {
-    rows = await readGitmodules(storeRoot, { run });
-  } catch (err) {
-    return fail(`could not read .gitmodules to resolve ${name}'s base branch: ${err.message}`, err.exitCode ?? 2);
-  }
-  const row = rows.find((r) => r.name === name);
-  const base = row?.base_branch;
-  if (!base) {
-    return fail(`${name}: no base_branch recorded in .gitmodules`, 2);
+  // Repo-local: `config.repo.base_branch`, validated by validateConfig.
+  let base;
+  if (repoLocal) {
+    base = config.repo.base_branch;
+  } else {
+    let rows;
+    try {
+      rows = await readGitmodules(storeRoot, { run });
+    } catch (err) {
+      return fail(`could not read .gitmodules to resolve ${name}'s base branch: ${err.message}`, err.exitCode ?? 2);
+    }
+    const row = rows.find((r) => r.name === name);
+    base = row?.base_branch;
+    if (!base) {
+      return fail(`${name}: no base_branch recorded in .gitmodules`, 2);
+    }
   }
 
   const { cmd: openspecCmd, args: openspecBaseArgs } = splitInvocation(config?.openspec?.invocation);
 
-  // 1. Initialize OpenSpec BEFORE `state prepare-base`: an un-onboarded submodule has no
-  // openspec/ of its own, so OpenSpec's upward walk resolves to the STORE's root instead —
-  // repository-state.sh's own assert modes refuse to run against a repo that isn't its own
-  // OpenSpec root (verified: it fails here with exactly that message and points at this fix).
-  const initArgs = ['init'];
-  if (port?.id) initArgs.push('--tools', port.id);
-  const inited = await step(openspecCmd, [...openspecBaseArgs, ...initArgs]);
-  if (inited.code !== 0) {
-    return fail(`openspec init failed in ${name}:\n${inited.stderr || inited.stdout}`);
+  // 1. Give this submodule an OpenSpec root of its own, BEFORE `state prepare-base`.
+  //
+  // GREENFIELD (no openspec/ here): run `openspec init`. It has to happen before prepare-base
+  // because an un-onboarded submodule has no openspec/ of its own, so OpenSpec's upward walk
+  // resolves to the STORE's root instead — repository-state.sh's own assert modes refuse to run
+  // against a repo that isn't its own OpenSpec root (verified: it fails here with exactly that
+  // message and points at this fix).
+  //
+  // BROWNFIELD (openspec/ already present): skip init entirely and only ASSERT what stage 5
+  // needs. See the block comment above `inspectExistingOpenspec` for why running init here would
+  // silently auto-answer OpenSpec's legacy-cleanup prompt on the team's behalf. The ordering
+  // reason above does not apply on this branch: openspec/ already exists in the repository, so
+  // the upward walk stops here. Step 2 below still PROVES that, on both branches.
+  if (existsSync(join(submodulePath, OPENSPEC_DIR))) {
+    const found = inspectExistingOpenspec(submodulePath);
+    if (!found.ok) {
+      return fail(incompleteOpenspecMessage(
+        name,
+        found.missing,
+        [openspecCmd, ...openspecBaseArgs].join(' '),
+        openspecToolId(port),
+        submodulePath,
+      ));
+    }
+    evidence.push(`${OPENSPEC_DIR}/ already exists in ${name} — skipped \`openspec init\` (its legacy-cleanup prompt is the team's to answer); specs/, changes/, changes/archive/ and the config all present`);
+  } else {
+    const initArgs = ['init'];
+    if (openspecToolId(port)) initArgs.push('--tools', openspecToolId(port));
+    // gigacode etc. (spec-openspec-coexistence-2026-09-22.md): OpenSpec only knows the tool id
+    // we just passed it (e.g. `qwen`), not the port's own — so before running init we snapshot
+    // that OpenSpec tool's directory (whatever was there BEFORE, e.g. a real pre-existing
+    // `.qwen/` the operator also uses directly), and after init relocate only what init just
+    // added into the port's real `agent_dir`, rewriting in-file path references as it goes.
+    const relocationSnapshot = snapshotOpenspecToolDir(submodulePath, port);
+    const inited = await step(openspecCmd, [...openspecBaseArgs, ...initArgs]);
+    if (inited.code !== 0) {
+      return fail(`openspec init failed in ${name}:\n${inited.stderr || inited.stdout}`);
+    }
+    const relocation = relocateAfterOpenspecRun(submodulePath, port, relocationSnapshot);
+    if (relocation.moved.length > 0) {
+      evidence.push(`relocated ${relocation.moved.length} OpenSpec-generated file(s) for ${port.openspec_tool} into ${port.agent_dir}/ (GigaCode reads its own agent_dir, not OpenSpec's ${port.openspec_tool} dir)`);
+    }
+    if (relocation.skippedPreexisting.length > 0) {
+      evidence.push(`left ${relocation.skippedPreexisting.length} pre-existing file(s) untouched under the ${port.openspec_tool} dir (present before this run — not ours to move)`);
+    }
   }
 
   // 2. Prove the reported OpenSpec root is this submodule, not the store.
@@ -176,9 +441,29 @@ export async function onboardOne(ctx, submodulePath) {
   }
 
   // 3. Now that the submodule owns its own OpenSpec root, prepare-base can actually resolve.
-  const prepared = await step('bash', [toolPath('state', lang), 'prepare-base', '--repo', submodulePath, '--base', base]);
-  if (prepared.code !== 0) {
-    return fail(`state prepare-base failed for ${name}:\n${prepared.stderr || prepared.stdout}`);
+  //
+  // Repo-local: NOT prepare-base. It fetches origin, checks the base branch out and fast-forwards
+  // it — right for a submodule this kit cloned, wrong in the team's own working checkout (it
+  // would move them off their branch, and a trial repository need not have an origin at all).
+  // Instead: prove the base branch exists (local or origin ref, read-only) and record it as
+  // `git config serpens.baseBranch`, which repository-state.sh's base resolution already prefers.
+  if (repoLocal) {
+    const localRef = await step('git', ['rev-parse', '--verify', '--quiet', `refs/heads/${base}`]);
+    if (localRef.code !== 0) {
+      const originRef = await step('git', ['rev-parse', '--verify', '--quiet', `refs/remotes/origin/${base}`]);
+      if (originRef.code !== 0) {
+        return fail(`${name}: base branch '${base}' (repo.base_branch) exists neither locally nor as origin/${base}`, 2);
+      }
+    }
+    const baseConfig = await step('git', ['config', 'serpens.baseBranch', base]);
+    if (baseConfig.code !== 0) {
+      return fail(`could not set serpens.baseBranch for ${name}:\n${baseConfig.stderr}`);
+    }
+  } else {
+    const prepared = await step('bash', [toolPath('state', lang), 'prepare-base', '--repo', submodulePath, '--base', base]);
+    if (prepared.code !== 0) {
+      return fail(`state prepare-base failed for ${name}:\n${prepared.stderr || prepared.stdout}`);
+    }
   }
 
   // 4. Resolve and prove the port scope. Project scope is auto-discoverable by serpens-lint;
@@ -209,13 +494,24 @@ export async function onboardOne(ctx, submodulePath) {
   }
 
   // 5. A stable repository id, read by gen-index.mjs instead of the checkout folder name.
-  recordWrite(`write ${join(submodulePath, 'openspec', 'repo.txt')}`, () => {
-    writeFileSync(join(submodulePath, 'openspec', 'repo.txt'), `${name}\n`, 'utf8');
+  // `openspec/` exists by now either way (init made it, or it was already there) — but nothing
+  // has made OUR directory at this point on EITHER branch, which is why the mkdirSync is here
+  // and not left to `openspec init`.
+  recordWrite(`write ${join(submodulePath, LAYOUT.repoTxt)}`, () => {
+    mkdirSync(join(submodulePath, SERPENS_DIR), { recursive: true });
+    writeFileSync(join(submodulePath, LAYOUT.repoTxt), `${name}\n`, 'utf8');
   });
+  // 5b. Repo-local only: the one-line topology file the store-only tools read at hook time
+  // (there is no config file then) so `catalog`/`sync-submodules` refuse instead of guessing.
+  if (repoLocal) {
+    recordWrite(`write ${join(submodulePath, LAYOUT.topology)}`, () => {
+      writeFileSync(join(submodulePath, LAYOUT.topology), 'repo-local\n', 'utf8');
+    });
+  }
 
-  // 6. openspec/adr/ must exist even empty — spns-archive writes openspec/adr/NNNN-<slug>.md
+  // 6. serpens/adr/ must exist even empty — spns-archive writes serpens/adr/NNNN-<slug>.md
   // and will not create the directory itself, and a bare directory never survives a clone.
-  const adrDir = join(submodulePath, 'openspec', 'adr');
+  const adrDir = join(submodulePath, LAYOUT.adrDir);
   recordWrite(`mkdir -p ${adrDir}`, () => mkdirSync(adrDir, { recursive: true }));
   recordWrite(`write ${join(adrDir, '.gitkeep')}`, () => writeFileSync(join(adrDir, '.gitkeep'), '', 'utf8'));
 
@@ -245,7 +541,7 @@ export async function onboardOne(ctx, submodulePath) {
   // step exists for. The git-tracking gate still applies in full to every OTHER caller: the
   // agent's own `serpens-sdd verify-docs`, the pre-commit hook, and CI.
   // `onboarding: true` also relaxes exactly one more check for the same ordering reason: the
-  // testing-stack gate now treats an absent `docs/testing-stack.md` as an error on a spoke, and
+  // testing-stack gate now treats an absent `serpens/testing-stack.md` as an error on a spoke, and
   // stage 6 — not this stage — is what writes it. Without the flag, every first install would
   // fail here on a file the installer has not reached yet. A file already on disk is still
   // validated in full.
@@ -257,22 +553,37 @@ export async function onboardOne(ctx, submodulePath) {
     return fail(`verify-docs failed for ${name}:\n${verifyDocs.output}`);
   }
 
-  // 8. lefthook.yml, rendered for the resolved call route, then installed. The shim is always
-  // written in this same pass (step 13 below), so the route is always 'shim' — hasNodeModules
-  // and repoRoot are irrelevant to the outcome here, only kept as resolveCallRoute's contract.
+  // 8. lefthook.yml, rendered for the resolved call route, then installed — but ONLY when we
+  // own the file we are about to write (gap 8). The shim is always written in this same pass
+  // (step 13 below), so the route is always 'shim' — hasNodeModules and repoRoot are irrelevant
+  // to the outcome here, only kept as resolveCallRoute's contract.
   const route = resolveCallRoute({ repoRoot: submodulePath, hasNodeModules: false, shimAvailable: true });
-  const lefthookPath = join(submodulePath, 'lefthook.yml');
-  recordWrite(`write ${lefthookPath}`, () => writeFileSync(lefthookPath, renderLefthook(route.invocation, lang), 'utf8'));
-  const lefthookInstalled = await step('lefthook', ['install']);
-  if (lefthookInstalled.code !== 0) {
-    return fail(`lefthook install failed for ${name}:\n${lefthookInstalled.stderr || lefthookInstalled.stdout}`);
+  const lefthookPlan = planLefthook(submodulePath);
+  const lefthookRendered = renderLefthook(route.invocation, lang);
+  if (lefthookPlan.mode === 'write' || lefthookPlan.mode === 'regenerate') {
+    recordWrite(`write ${lefthookPlan.path}`, () => writeFileSync(lefthookPlan.path, lefthookRendered, 'utf8'));
+    const lefthookInstalled = await step('lefthook', ['install']);
+    if (lefthookInstalled.code !== 0) {
+      return fail(`lefthook install failed for ${name}:\n${lefthookInstalled.stderr || lefthookInstalled.stdout}`);
+    }
+  } else {
+    // A team config already owns lefthook.yml (or one of its other 14 names). We never touch
+    // it, never run `lefthook install` on their behalf, and write ours to a path we own instead.
+    mkdirSync(dirname(lefthookPlan.path), { recursive: true });
+    recordWrite(`write ${lefthookPlan.path}`, () => writeFileSync(lefthookPlan.path, lefthookRendered, 'utf8'));
+    const theirsPath = join(submodulePath, lefthookPlan.theirs);
+    evidence.push(
+      `⚠ ${theirsPath}: left untouched — a team lefthook config already exists. `
+      + `lefthook: 'manual'. Add to it by hand, then re-run \`lefthook install\` yourself:\n`
+      + `  extends:\n    - serpens/lefthook.yml`,
+    );
   }
 
   // 9. Seed .gitignore so build output / caches / local settings are never staged by accident.
   // Never overwrite a real one the repository already has.
   const gitignorePath = join(submodulePath, '.gitignore');
   if (!existsSync(gitignorePath)) {
-    const src = join(kitDir, 'system-store-template', '.gitignore');
+    const src = join(kitDir, 'system-store-template', 'gitignore.template');
     recordWrite(`cp ${src} ${gitignorePath}`, () => copyFileSync(src, gitignorePath));
   }
 
@@ -295,8 +606,14 @@ export async function onboardOne(ctx, submodulePath) {
   // `includes('references:')` true while `findIndex` found no such key, so the entry landed at
   // index 0 and the whole document became invalid YAML. `openspec list` then said "No specs
   // found" instead of erroring, so the user lost their context pack SILENTLY.
-  const declared = declareStoreReference(existingConfigYaml, config.store.id, config.store.remote);
-  if (declared.action === 'refused') {
+  // Repo-local: no store exists, so there is nothing to declare — skipped outright, with the
+  // same `{action, text}` shape so the context/rules chain below reads the file unchanged.
+  const declared = repoLocal
+    ? { action: 'skipped', text: undefined }
+    : declareStoreReference(existingConfigYaml, config.store.id, config.store.remote);
+  if (declared.action === 'skipped') {
+    evidence.push(`${configYamlPath}: references: not written — repo-local topology has no system store to declare`);
+  } else if (declared.action === 'refused') {
     // Not a failure of onboarding: it is a file we will not risk. Say exactly what to add.
     evidence.push(
       `⚠ ${configYamlPath}: left untouched — ${declared.reason}. `
@@ -311,16 +628,86 @@ export async function onboardOne(ctx, submodulePath) {
     );
   }
 
+  // 10b. Fill the other two slots OpenSpec injects: `context:` with the fact-file CATALOG, and
+  // `rules:` with the per-artifact orders. Until now both came back `undefined` on every
+  // `openspec instructions` call we made — a slot upstream hands us for free, left empty.
+  //
+  // The catalog is not "read these files": it is one line per file saying what that file answers,
+  // so the agent can choose, and so a shop that adds a tenth fact file does not make every
+  // artifact instruction pay for ten reads. The ORDER to read one lives in `rules:`, keyed by
+  // artifact, because the stages need different facts — `tasks` cannot list a test step without
+  // the testing stack, `proposal` needs none of it.
+  //
+  // Both are written only when the key is absent. In a brownfield repository `context:` holds the
+  // user's own project pack and `rules:` their own constraints; those are theirs, and
+  // declareContextCatalog/declareArtifactRules report `unchanged` rather than rewriting them.
+  //
+  // The artifact ids are `spec-driven`'s. A project-local schema may declare different ones;
+  // artifactRules() drops any rule whose artifact is not in the list it is given, so passing the
+  // wrong list can only ever write FEWER rules, never a rule into the wrong artifact.
+  //
+  // The two edits CHAIN IN MEMORY rather than re-reading the file between them. A dry run does
+  // not write, so re-reading would hand the second edit a document without the first — and then
+  // a real run would write a file missing one of the two blocks. The text each step starts from
+  // is whatever the previous step produced, which is also what makes the outcome identical
+  // whether or not the run is a dry one.
+  const SPEC_DRIVEN_ARTIFACTS = ['proposal', 'specs', 'design', 'tasks'];
+  let configText = declared.text ?? existingConfigYaml;
+  const extraSlots = [];
+
+  const catalogResult = declareContextCatalog(configText, contextCatalog());
+  if (catalogResult.action === 'appended') {
+    configText = catalogResult.text;
+    extraSlots.push('context catalog');
+  } else if (catalogResult.action === 'unchanged') {
+    evidence.push(`${configYamlPath}: context catalog not written — ${catalogResult.reason}`);
+  } else {
+    evidence.push(`⚠ ${configYamlPath}: context catalog not written — ${catalogResult.reason}. Add by hand:\n${catalogResult.manual}`);
+  }
+
+  // Artifact rules: unlike the catalog, a brownfield `rules:` is not an all-or-nothing refusal
+  // (gap 5). `declareArtifactRules` inserts only the ids the caller asked for that the user has
+  // NOT already declared — upstream looks rules up per artifact id, so an id we add can never
+  // override one of the user's. `perId` is the only way to report that per-id split; `unchanged`
+  // now means "every requested id was already the user's", not "a rules: key already existed".
+  const rulesResult = declareArtifactRules(configText, artifactRules(SPEC_DRIVEN_ARTIFACTS));
+  if (rulesResult.action === 'appended' || rulesResult.action === 'inserted') {
+    configText = rulesResult.text;
+    extraSlots.push('artifact rules');
+    const inserted = Object.entries(rulesResult.perId ?? {}).filter(([, v]) => v === 'inserted').map(([id]) => id);
+    const unchanged = Object.entries(rulesResult.perId ?? {}).filter(([, v]) => v === 'unchanged').map(([id]) => id);
+    if (rulesResult.action === 'inserted') {
+      evidence.push(`${configYamlPath}: rules: inserted for [${inserted.join(', ')}]`
+        + (unchanged.length ? `; left unchanged (already the user's) for [${unchanged.join(', ')}]` : ''));
+    }
+  } else if (rulesResult.action === 'unchanged') {
+    evidence.push(`${configYamlPath}: artifact rules not written — ${rulesResult.reason}`);
+  } else {
+    evidence.push(`⚠ ${configYamlPath}: artifact rules not written — ${rulesResult.reason}. Add by hand:\n${rulesResult.manual}`);
+  }
+  if (declared.action && declared.action !== 'skipped' && declared.action !== 'unchanged' && declared.action !== 'refused') {
+    recordInstalledFile(submodulePath, relative(submodulePath, configYamlPath), resolvedConfig.existed ? 'appended' : 'created');
+  }
+  if (extraSlots.length) {
+    recordWrite(
+      `write ${configYamlPath} (${extraSlots.join(' + ')})`,
+      () => writeFileSync(configYamlPath, configText, 'utf8'),
+    );
+    recordInstalledFile(submodulePath, relative(submodulePath, configYamlPath), resolvedConfig.existed ? 'appended' : 'created');
+  }
+
   // 11. Append the disposer HARD RULE to the port instruction file, exactly once.
   const instructionPath = join(submodulePath, port.instruction_file);
-  if (appendHardRuleOnce(instructionPath)) {
+  const instructionExistedBefore = existsSync(instructionPath);
+  if (appendHardRuleOnce(instructionPath, lang)) {
     evidence.push(`$ append HARD RULE to ${instructionPath} → done`);
+    recordInstalledFile(submodulePath, port.instruction_file, instructionExistedBefore ? 'appended' : 'created');
   } else {
     evidence.push(`HARD RULE already present in ${instructionPath} — not duplicated`);
   }
 
   // 12. The templates the installed commands cite by path.
-  const templatesDir = join(submodulePath, 'templates');
+  const templatesDir = join(submodulePath, LAYOUT.templates);
   recordWrite(`mkdir -p ${templatesDir}`, () => mkdirSync(templatesDir, { recursive: true }));
   // Never overwrite a file we did not write. These three names are generic enough that a
   // repository can legitimately already have one — `templates/research.md` especially — and the
@@ -356,7 +743,7 @@ export async function onboardOne(ctx, submodulePath) {
   const shimPath = writeShim(submodulePath, { binPath: BIN_PATH });
   evidence.push(`shim written: ${shimPath}`);
 
-  return { ok: true, evidence };
+  return { ok: true, evidence, lefthook: lefthookPlan.mode === 'manual' ? 'manual' : lefthookPlan.mode };
 }
 
 /**
@@ -373,6 +760,18 @@ export async function onboardOne(ctx, submodulePath) {
 export async function stage5(ctx) {
   const { run, storeRoot, dryRun = false } = ctx;
   const evidence = [];
+
+  // Repo-local (step 6, gap 3): no store, no .gitmodules — onboard the one repository directly.
+  if (ctx.topology === 'repo-local') {
+    const result = await onboardOne(ctx, ctx.repoRoot);
+    evidence.push(...result.evidence);
+    if (!result.ok) {
+      return { ok: false, evidence, error: result.error, exitCode: result.exitCode };
+    }
+    const lefthookManual = result.lefthook === 'manual'
+      ? [{ name: ctx.config.repo.name, submodulePath: ctx.repoRoot }] : [];
+    return { ok: true, evidence, lefthookManual };
+  }
 
   let rows;
   try {
@@ -395,6 +794,7 @@ export async function stage5(ctx) {
   }
 
   ctx.failures = [];
+  const lefthookManual = [];
   let allOk = true;
 
   for (const row of rows) {
@@ -408,6 +808,7 @@ export async function stage5(ctx) {
       evidence.push(`✗ ${row.name}: un-onboarded — ${result.error}`);
     } else {
       evidence.push(`✓ ${row.name}: onboarded`);
+      if (result.lefthook === 'manual') lefthookManual.push({ name: row.name, submodulePath });
     }
   }
 
@@ -421,5 +822,5 @@ export async function stage5(ctx) {
     };
   }
 
-  return { ok: true, evidence };
+  return { ok: true, evidence, lefthookManual };
 }

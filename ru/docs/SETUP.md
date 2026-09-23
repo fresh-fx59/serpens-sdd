@@ -213,14 +213,14 @@ fast-forward. Про stash и коммиты на других локальны�
 # Shim: один сгенерированный файл заменяет одиннадцать копий. `serpens-sdd init` пишет его на этом
 # этапе (вызов `writeShim()` в `stage3()`, src/stages/stage3-store.mjs — имя функции, а не номер
 # строки, чтобы ссылка не устарела). Если этапы выполняются вручную, доказательство:
-test -x "$SERPENS_SYSTEM_STORE_ROOT/tools/serpens-sdd" && "$SERPENS_SYSTEM_STORE_ROOT/tools/serpens-sdd" version
-install -m 0644 "$SERPENS_SDD_ROOT/templates/port-facts.md" "$SERPENS_SYSTEM_STORE_ROOT/port-facts.md"
-install -m 0644 "$SERPENS_SDD_ROOT/templates/conventions-branching.md" "$SERPENS_SYSTEM_STORE_ROOT/conventions/branching.md"
-mkdir -p "$SERPENS_SYSTEM_STORE_ROOT/templates"
-install -m 0644 "$SERPENS_SDD_ROOT/templates/store-contract.md"  "$SERPENS_SYSTEM_STORE_ROOT/templates/"
-install -m 0644 "$SERPENS_SDD_ROOT/templates/testing-stack.md"   "$SERPENS_SYSTEM_STORE_ROOT/templates/"
-install -m 0644 "$SERPENS_SDD_ROOT/templates/research.md"        "$SERPENS_SYSTEM_STORE_ROOT/templates/"
-install -m 0644 "$SERPENS_SDD_ROOT/templates/adr.md"             "$SERPENS_SYSTEM_STORE_ROOT/templates/"
+test -x "$SERPENS_SYSTEM_STORE_ROOT/serpens/bin/serpens-sdd" && "$SERPENS_SYSTEM_STORE_ROOT/serpens/bin/serpens-sdd" version
+install -m 0644 "$SERPENS_SDD_ROOT/templates/port-facts.md" "$SERPENS_SYSTEM_STORE_ROOT/serpens/port-facts.md"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/conventions-branching.md" "$SERPENS_SYSTEM_STORE_ROOT/serpens/branching.md"
+mkdir -p "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/store-contract.md"  "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates/"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/testing-stack.md"   "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates/"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/research.md"        "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates/"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/adr.md"             "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates/"
 ```
 
 Инициализируйте OpenSpec в хранилище закреплённым пакетом и портом из этапа 2.
@@ -258,31 +258,58 @@ git -C "$SERPENS_SYSTEM_STORE_ROOT" diff -- .gitmodules
 Для каждого пути из `.gitmodules`:
 
 1. запустите корневой `<serpens-sdd> state prepare-base` и устраните каждую ошибку;
-2. инициализируйте OpenSpec в этом репозитории закреплённым пакетом и портом;
+2. дайте репозиторию собственный корень OpenSpec. Если каталога `openspec/` **нет**,
+   инициализируйте OpenSpec закреплённым пакетом и найденным портом. Если `openspec/` **уже
+   есть**, установщик НЕ запускает `openspec init`: он лишь проверяет, что существуют
+   `openspec/specs/`, `openspec/changes/`, `openspec/changes/archive/` и `openspec/config.yaml`
+   (или `config.yml`) и что конфиг разбирается, и останавливается, называя недостающее.
+   Причина: `openspec init` спрашивает «Upgrade and clean up legacy files?». Изнутри
+   установщика он спросить не может и отвечает «да» сам — переписывает ваши
+   `CLAUDE.md`/`AGENTS.md` и удаляет файлы, в том числе в вашем домашнем каталоге. Этот ответ
+   ваш, а не наш. Запустите напечатанную установщиком команду в том репозитории сами,
+   ответьте на вопрос и снова запустите Serpens;
 3. запустите `<serpens-sdd> openspec-root` и докажите, что корень совпадает с подмодулем;
 4. shim заменяет копии инструментов спицы: `serpens-sdd init` пишет его в этот подмодуль
    (вызов `writeShim()` в `onboardOne()`, `src/stages/stage5-onboard.mjs`), никогда вручную. Доказательство то же, что для
-   хранилища: `test -x "$submodule/tools/serpens-sdd" && "$submodule/tools/serpens-sdd" version`.
-   Скопируйте в `templates/` этого репозитория только шаблоны, на которые установленные
+   хранилища: `test -x "$submodule/serpens/bin/serpens-sdd" && "$submodule/serpens/bin/serpens-sdd" version`.
+   Скопируйте в `serpens/templates/` этого репозитория только шаблоны, на которые установленные
    команды ссылаются по пути: `adr.md` (spns-archive), `research.md`
    и `testing-stack.md`. Команда, называющая отсутствующий шаблон, — мёртвая инструкция;
 5. скопируйте `config/lefthook.yml.example` в `lefthook.yml` **и подставьте токен в копии** —
    в примере четыре буквальных токена `<serpens-sdd>`, а подстановка этапа 6 покрывает только
    каталоги установленных команд и навыков, но не этот файл. `lefthook.yml`, в котором осталось
-   `run: <serpens-sdd> verify-docs`, ломает КАЖДЫЙ коммит в репозитории:
+   `run: <serpens-sdd> verify-docs`, ломает КАЖДЫЙ коммит в репозитории. **Сначала проверка
+   владения, всегда**: сам lefthook читает 15 разных имён основного конфига (`lefthook.yml`,
+   `.lefthook.yml`, `.config/lefthook.yml` и варианты `.yaml`/`.toml`/`.json`/`.jsonc` для
+   каждого) плюс любой `lefthook-local.*` — и «если файлов больше одного, вы никогда не узнаете,
+   какой из них выиграл» это предупреждение самого upstream. Поэтому перед записью чего-либо
+   перечислите все эти имена, которые уже существуют в репозитории. Ничего нет -> пишем
+   `lefthook.yml`, помеченный первой строкой `# serpens-sdd:generated`, как ниже. Есть ТОЛЬКО наш
+   помеченный `lefthook.yml` с прошлого запуска -> перегенерируем его на месте. Что угодно ещё
+   (непомеченный `lefthook.yml` или любое из 14 других имён) -> хуки принадлежат команде: пишем
+   свой в `serpens/lefthook.yml`, их файл не трогаем, и оставляем один ручной шаг —
+
+   ```yaml
+   extends:
+     - serpens/lefthook.yml
+   ```
+
+   — добавить в их конфиг вручную. `lefthook install` в этом случае НЕ запускаем: свою настройку
+   хуков команда ведёт сама:
 
    ```bash
-   shim='"$(git rev-parse --show-toplevel)"/tools/serpens-sdd'   # тот же вызов, что на этапе 6
+   shim='"$(git rev-parse --show-toplevel)"/serpens/bin/serpens-sdd'   # тот же вызов, что на этапе 6
    sed "s|<serpens-sdd>|$shim|g" "$SERPENS_SDD_ROOT/config/lefthook.yml.example" > "$submodule/lefthook.yml"
    grep -n '<serpens-sdd>' "$submodule/lefthook.yml" && exit 1 || true   # не должно найти ничего
    ```
 
-   затем установите lefthook из разрешённого внутреннего источника и выполните `lefthook install`;
-6. создайте стабильный id в `openspec/repo.txt`, создайте каталог `openspec/adr/`
+   затем установите lefthook из разрешённого внутреннего источника и выполните `lefthook install`
+   — только для веток «пишем/перегенерируем» выше;
+6. создайте стабильный id в `serpens/repo.txt`, создайте каталог `serpens/adr/`
    (с `.gitkeep`, чтобы он пережил clone: `spns-archive` пишет
-   `openspec/adr/NNNN-<slug>.md` и сам каталог не создаёт), сгенерируйте индекс и
+   `serpens/adr/NNNN-<slug>.md` и сам каталог не создаёт), сгенерируйте индекс и
    запустите корневой `<serpens-sdd> verify-docs`;
-6a. скопируйте `templates/testing-stack.md` в `docs/testing-stack.md` этого репозитория и
+6a. скопируйте `serpens/templates/testing-stack.md` в `serpens/testing-stack.md` этого репозитория и
    заполните его вместе с командой. ПЯТЬ обязательных разделов: быстрый и медленный уровни с
    командой запуска каждого, границы связывания, которые ловит только медленный уровень,
    порядок границ при отладке и `Ручной доступ для тестирования` — двенадцать слотов о том, что
@@ -302,7 +329,7 @@ git -C "$SERPENS_SYSTEM_STORE_ROOT" diff -- .gitmodules
    дописывает новый раздел, не тронув уже написанный ответ;
 6b. приведи `.gitignore` этого репозитория в порядок до первого запуска: вывод сборки, кеши
    языка (`__pycache__/`, `*.py[cod]`, `target/`, `build/`, `node_modules/`) и локальные
-   настройки должны быть там. За основу возьми `system-store-template/.gitignore`.
+   настройки должны быть там. За основу возьми `system-store-template/gitignore.template`.
    Untracked-файлы не блокируют ни один gate, но игнорируемый файл невидим для всех gate И его
    нельзя случайно закоммитить — именно это нужно для файла настроек с паролем;
 7. объявите хранилище в `openspec/config.yaml` этого репозитория, чтобы спека
@@ -372,7 +399,7 @@ frontmatter и токен `{{args}}`, если это требуется.
 
 Замените каждый токен `<openspec>` в установленных копиях подставленным вызовом из
 `port-facts.md`, а каждый токен `<serpens-sdd>` — вызовом shim из этапа 3/5: буквально
-`"$(git rev-parse --show-toplevel)"/tools/serpens-sdd`, собственный закоммиченный shim репозитория.
+`"$(git rev-parse --show-toplevel)"/serpens/bin/serpens-sdd`, собственный закоммиченный shim репозитория.
 Это ровно та строка, которую этап 5 пишет в `lefthook.yml`, поэтому хуки и команды не могут
 расходиться. Это ЗНАЧЕНИЕ ПО УМОЛЧАНИЮ, применяемое, когда ничего не настроено; магазин, который
 вызывает пакет иначе, задаёт `serpens_sdd.invocation` в файле конфигурации (или
@@ -393,7 +420,7 @@ grep -rnE '<openspec>|<serpens-sdd>' "<installed-command-dir>" "<installed-skill
 ШАБЛОН — адаптируйте под внутренний CI и проверьте дымовым прогоном, прежде чем на
 него полагаться. Каждый репозиторий-спица гоняет ту же проверку, что агент и хук.
 Образу CI нужен глобально установленный `@fresh-fx59/serpens-sdd`, ИЛИ задача должна
-вызывать собственный закоммиченный shim репозитория, `./tools/serpens-sdd` — тот же
+вызывать собственный закоммиченный shim репозитория, `./serpens/bin/serpens-sdd` — тот же
 файл, в который уже резолвится токен `<serpens-sdd>` — потому что в свежем checkout
 shim есть, а глобальной установки нет, если её не организовать отдельно. Добавьте шаг,
 который выполняется при каждом push в репозиторий-спицу:
@@ -464,8 +491,8 @@ git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule status
 ```bash
 installed_bin=$(node -e 'console.log(require.resolve("@fresh-fx59/serpens-sdd/bin/serpens-sdd.mjs"))' 2>/dev/null \
   || readlink -f "$(command -v serpens-sdd)")
-for shim in "$SERPENS_SYSTEM_STORE_ROOT/tools/serpens-sdd" \
-    $(git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule --quiet foreach 'echo "$toplevel/$sm_path/tools/serpens-sdd"'); do
+for shim in "$SERPENS_SYSTEM_STORE_ROOT/serpens/bin/serpens-sdd" \
+    $(git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule --quiet foreach 'echo "$toplevel/$sm_path/serpens/bin/serpens-sdd"'); do
   grep -q 'serpens-sdd shim' "$shim" || { echo "✗ $shim отсутствует или это не сгенерированный shim"; continue; }
   grep -qF "$installed_bin" "$shim" || { echo "✗ $shim ведёт в другую установку"; continue; }
   printf '%s -> ' "$shim"; "$shim" version
@@ -488,9 +515,41 @@ done
 - [ ] в каждом подключённом репозитории проверка зелёная в pre-commit и в CI, индекс
       и `repo.txt` закоммичены;
 - [ ] команды и навыки установлены, ни одного токена `<openspec>` и `<serpens-sdd>` не осталось;
-- [ ] `tools/serpens-sdd` есть в хранилище и в каждом подмодуле, а `tools/*.sh` — нет ни в одном;
+- [ ] `serpens/bin/serpens-sdd` есть в хранилище и в каждом подмодуле, а `tools/*.sh` — нет ни в одном;
 - [ ] одна Serpens-команда отработала целиком в порту;
 - [ ] назван чемпион в каждой команде и назван владелец харнесса: за ним закрепления
       версий, задача каталога и повторные проверки порта;
 - [ ] записан путь исключения: любую задачу можно вести мимо потока, причина
       фиксируется в трекере.
+
+## 10. Пробный запуск в одном репозитории (repo-local, без хранилища)
+
+Так можно попробовать Serpens на части задач в ОДНОМ репозитории, где OpenSpec уже ведут
+вручную. Системного хранилища нет, подмодулей нет, ничего не коммитится и не пушится.
+Обычные изменения OpenSpec (без `.serpens.yaml`) остаются вне всех хуков и линта Serpens.
+
+```bash
+serpens-sdd init --print-config-template --topology repo-local > ../serpens-sdd.json
+# поправьте project, port, repo.name, repo.base_branch; repo.root оставьте "." (корень git)
+cd <ваш-репозиторий>
+serpens-sdd init --config ../serpens-sdd.json --dry-run   # план; ничего не пишет
+serpens-sdd init --config ../serpens-sdd.json
+```
+
+- `store:` и `repositories:` при `topology: repo-local` — ошибка конфигурации.
+- Выполняются этапы 0, 3 (кладёт `serpens/branching.md`, только если его нет), 5, 6, 8, 9.
+  Этапы 1 и 4 и регистрация хранилища не выполняются. `prepare-base` тоже не выполняется:
+  init не переключает вашу ветку и не делает fetch; он только проверяет, что
+  `repo.base_branch` существует, и записывает её в `git config serpens.baseBranch`.
+- Факты лежат в самом репозитории: `serpens/branching.md`, `serpens/port-facts.md`,
+  `serpens/testing-stack.md`. В `serpens/topology` записано `repo-local`; `catalog` и
+  `sync-submodules` там отказываются работать. В `openspec/config.yaml` не добавляется
+  запись `references:`.
+- Область команд задаёт порт, как и в режиме хранилища: порт с областью `project` ставит их в
+  `<repo>/<agent_dir>`; порт с областью `user` — в `$HOME/<agent_dir>`, и они видны во всех
+  репозиториях на машине. Передайте `--port-scope project`, чтобы пробный запуск остался
+  внутри репозитория.
+- Журнал запуска — `serpens/.serpens-sdd-init-<stamp>.log`, его игнорирует `serpens/.gitignore`.
+- Затем: заполните `serpens/port-facts.md` и `serpens/testing-stack.md`, проверьте изменения
+  и закоммитьте их сами на ветке задачи. Командный `lefthook.yml` не трогается: добавьте в
+  него `extends: [serpens/lefthook.yml]` вручную.

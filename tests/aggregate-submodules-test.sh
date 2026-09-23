@@ -13,7 +13,7 @@ no() { FAIL=$((FAIL + 1)); echo "  ✗ $1"; printf '%s\n' "$2" | sed 's/^/      
 G() { git -c init.defaultBranch=master -c user.email=test@example.invalid -c user.name=test -c commit.gpgsign=false "$@"; }
 
 STORE="$TEST_ROOT/store"
-mkdir -p "$STORE/submodules/alpha/openspec" "$STORE/submodules/beta"
+mkdir -p "$STORE/submodules/alpha/serpens" "$STORE/submodules/beta"
 G -C "$STORE" init --quiet
 for repo in alpha beta; do
   G -C "$STORE/submodules/$repo" init --quiet
@@ -31,7 +31,7 @@ cat > "$STORE/.gitmodules" <<EOF
   url = ssh://forge.example/team/beta.git
   branch = master
 EOF
-cat > "$STORE/submodules/alpha/openspec/index.json" <<'EOF'
+cat > "$STORE/submodules/alpha/serpens/index.json" <<'EOF'
 {"schema_version":1,"source_digest":"digest-alpha","capabilities":[{"id":"orders","title":"Orders","summary":"Order lifecycle"}]}
 EOF
 cat > "$STORE/catalog.json" <<'EOF'
@@ -57,7 +57,7 @@ fi
 
 echo "T2 strict mode fails when a registered submodule has no index"
 out=$(node "$SCRIPT" --strict "$STORE" 2>&1); rc=$?
-if [ "$rc" -eq 1 ] && grep -q "beta: openspec/index.json missing" <<<"$out"; then
+if [ "$rc" -eq 1 ] && grep -q "beta: serpens/index.json missing" <<<"$out"; then
   ok "strict mode exposed the red submodule"
 else
   no "strict mode did not fail correctly (rc=$rc)" "$out"

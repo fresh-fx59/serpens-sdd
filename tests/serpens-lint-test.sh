@@ -11,10 +11,25 @@ FAIL=0
 ok() { PASS=$((PASS + 1)); echo "  ✓ $1"; }
 no() { FAIL=$((FAIL + 1)); echo "  ✗ $1"; printf '%s\n' "$2" | sed 's/^/      /'; }
 
+# mark_change <change-dir> — write the .serpens.yaml owner marker (src/ownership.mjs) so a
+# change-level check below (Why/What, delta-or-skip_specs, state header, change caps, delta-spec
+# sections) still applies to it. Every fixture change dir in this file represents a change WE
+# authored, so every one of them is marked — gap 1, step 3 scopes those checks to marked changes
+# only, and an unmarked change is silently skipped (reported once as an aggregate WARN instead).
+mark_change() {
+  cat > "$1/.serpens.yaml" <<'EOF'
+# serpens-sdd:change-marker
+owner: serpens-sdd
+ticket: ABCD-1234
+branch: feature/ABCD-1234
+created: 2026-09-22
+EOF
+}
+
 new_repo() {
   R="$TEST_ROOT/$1"
   rm -rf "$R"
-  mkdir -p "$R/openspec/specs/cap" "$R/openspec/changes/c1/specs/cap" "$R/docs"
+  mkdir -p "$R/openspec/specs/cap" "$R/openspec/changes/c1/specs/cap" "$R/serpens" "$R/serpens/docs"
   cat > "$R/openspec/specs/cap/spec.md" <<'EOF'
 # Cap
 Краткое описание возможности.
@@ -23,12 +38,13 @@ new_repo() {
 ### Requirement: Раздел
 #### Сценарий: ок
 EOF
-  printf '{\n  "schema_version": 1,\n  "repo": "r",\n  "source_digest": "d",\n  "capabilities": [\n    {"id": "cap", "title": "Cap", "path": "openspec/specs/cap/spec.md", "summary": "s"}\n  ]\n}\n' > "$R/openspec/index.json"
+  printf '{\n  "schema_version": 1,\n  "repo": "r",\n  "source_digest": "d",\n  "capabilities": [\n    {"id": "cap", "title": "Cap", "path": "openspec/specs/cap/spec.md", "summary": "s"}\n  ]\n}\n' > "$R/serpens/index.json"
+  mark_change "$R/openspec/changes/c1"
 }
 
 echo "L1 a Cyrillic heading anchor resolves"
 new_repo ru
-printf '# Док\n[ru](../openspec/specs/cap/spec.md#требования-и-границы)\n' > "$R/docs/a.md"
+printf '# Док\n[ru](../../openspec/specs/cap/spec.md#требования-и-границы)\n' > "$R/serpens/docs/a.md"
 out=$(node "$LINT" "$R" 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then
   ok "accepted a link to a Russian heading"
@@ -37,7 +53,7 @@ else
 fi
 
 echo "L2 a wrong Cyrillic anchor is still an error"
-printf '# Док\n[ru](../openspec/specs/cap/spec.md#нет-такого)\n' > "$R/docs/a.md"
+printf '# Док\n[ru](../../openspec/specs/cap/spec.md#нет-такого)\n' > "$R/serpens/docs/a.md"
 out=$(node "$LINT" "$R" 2>&1); rc=$?
 if [ "$rc" -eq 1 ] && grep -q "broken anchor" <<<"$out"; then
   ok "still catches an anchor that does not exist"
@@ -46,7 +62,7 @@ else
 fi
 
 echo "L3 Latin headings keep working"
-printf '# Doc\n[en](../openspec/specs/cap/spec.md#cap)\n' > "$R/docs/a.md"
+printf '# Doc\n[en](../../openspec/specs/cap/spec.md#cap)\n' > "$R/serpens/docs/a.md"
 out=$(node "$LINT" "$R" 2>&1); rc=$?
 if [ "$rc" -eq 0 ]; then
   ok "accepted a link to a Latin heading"
@@ -55,7 +71,7 @@ else
 fi
 
 echo "L4 a broken relative link is still an error"
-printf '# Doc\n[gone](../openspec/specs/nope/spec.md)\n' > "$R/docs/a.md"
+printf '# Doc\n[gone](../../openspec/specs/nope/spec.md)\n' > "$R/serpens/docs/a.md"
 out=$(node "$LINT" "$R" 2>&1); rc=$?
 if [ "$rc" -eq 1 ] && grep -q "broken link" <<<"$out"; then
   ok "still catches a missing target"
@@ -120,6 +136,7 @@ rm -rf "$A"
 
 echo "L9 a requirement outside a delta section is still ours (openspec drops it silently)"
 D="$(mktemp -d)"; mkdir -p "$D/openspec/changes/c1/specs/cap" "$D/docs"
+mark_change "$D/openspec/changes/c1"
 cat > "$D/openspec/changes/c1/specs/cap/spec.md" <<'EOF'
 ## ADDED Requirements
 ### Requirement: Good one
@@ -175,6 +192,7 @@ rm -rf "$V"
 
 echo "L12 a proposal without ## Why is caught here, not by openspec"
 P="$(mktemp -d)"; mkdir -p "$P/openspec/changes/c1/specs/cap" "$P/docs"
+mark_change "$P/openspec/changes/c1"
 cat > "$P/openspec/changes/c1/specs/cap/spec.md" <<'EOF'
 ## ADDED Requirements
 ### Requirement: X
@@ -198,6 +216,7 @@ rm -rf "$P"
 
 echo "L13 MODIFIED against a capability with no living spec fails here, not after the merge"
 M="$(mktemp -d)"; mkdir -p "$M/openspec/changes/c1/specs/billing" "$M/docs"
+mark_change "$M/openspec/changes/c1"
 printf '## Why\nx\n\n## What Changes\n- y\n' > "$M/openspec/changes/c1/proposal.md"
 cat > "$M/openspec/changes/c1/specs/billing/spec.md" <<'EOF'
 ## MODIFIED Requirements
@@ -236,8 +255,8 @@ fi
 rm -rf "$M"
 
 echo "L14 an unfilled port-facts.md is caught; a probed one passes"
-F="$(mktemp -d)"; mkdir -p "$F/openspec" "$F/docs"
-cat > "$F/port-facts.md" <<'EOF'
+F="$(mktemp -d)"; mkdir -p "$F/openspec" "$F/serpens"
+cat > "$F/serpens/port-facts.md" <<'EOF'
 # Port facts — <port name + version> (probed YYYY-MM-DD)
 
 | # | Question | Probe ran | Evidence (verbatim output) | Conclusion |
@@ -250,7 +269,7 @@ if [ "$rc" -eq 1 ] && grep -q 'template placeholder' <<<"$out"; then
 else
   no "port-facts.md is still unchecked (rc=$rc)" "$out"
 fi
-cat > "$F/port-facts.md" <<'EOF'
+cat > "$F/serpens/port-facts.md" <<'EOF'
 # Port facts — acme-cli 2.4 (probed 2026-08-26)
 
 | # | Question | Probe ran | Evidence (verbatim output) | Conclusion |
@@ -262,15 +281,15 @@ if [ "$rc" -eq 0 ]; then ok "a probed port-facts.md passes"; else no "a filled p
 rm -rf "$F"
 
 echo "L15 documented embed syntax inside inline code is not a broken directive"
-E="$(mktemp -d)"; mkdir -p "$E/openspec" "$E/docs"
-printf 'Use `<!-- embed: path#Lx-Ly -->` to pull a shape from source.\n' > "$E/docs/guide.md"
+E="$(mktemp -d)"; mkdir -p "$E/openspec" "$E/serpens/docs"
+printf 'Use `<!-- embed: path#Lx-Ly -->` to pull a shape from source.\n' > "$E/serpens/docs/guide.md"
 out=$(node "$LINT" "$E" 2>&1)
 if ! grep -q 'looks like an embed directive' <<<"$out"; then
   ok "prose about the directive is not reported as one"
 else
   no "documented syntax still warns" "$out"
 fi
-printf 'text\n<!-- embed: nope -->\n' > "$E/docs/guide.md"
+printf 'text\n<!-- embed: nope -->\n' > "$E/serpens/docs/guide.md"
 out=$(node "$LINT" "$E" 2>&1)
 if grep -q 'looks like an embed directive' <<<"$out"; then
   ok "a genuinely broken directive still warns"
@@ -278,6 +297,84 @@ else
   no "the embed check stopped working" "$out"
 fi
 rm -rf "$E"
+
+echo "L16 an UNMARKED (vanilla) change: no Why/What, no state header, bad checkbox, missing delta spec — none of it is an error, and it is reported once as WARN"
+U="$(mktemp -d)"; mkdir -p "$U/openspec/changes/c1/specs/cap" "$U/openspec/specs"
+printf 'prose only, no headings\n' > "$U/openspec/changes/c1/proposal.md"
+printf 'not a state header\n- [bad\n' > "$U/openspec/changes/c1/tasks.md"
+# no specs/ delta content at all (an empty dir) and no skip_specs: true — would be an error if owned
+out=$(node "$LINT" "$U" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && grep -q '1 unmarked change(s) ignored' <<<"$out" \
+   && ! grep -q 'no "## Why" section' <<<"$out" \
+   && ! grep -q 'missing state header' <<<"$out" \
+   && ! grep -q 'malformed checkbox' <<<"$out" \
+   && ! grep -q 'skip_specs' <<<"$out"; then
+  ok "a vanilla change with every classic defect stays green, reported once as WARN"
+else
+  no "an unmarked change was judged as if it were ours (rc=$rc)" "$out"
+fi
+
+echo "L17 the SAME change, marked, is judged in full again"
+mark_change "$U/openspec/changes/c1"
+out=$(node "$LINT" "$U" 2>&1); rc=$?
+if [ "$rc" -eq 1 ] && grep -q 'no "## Why" section' <<<"$out" && grep -q 'missing state header' <<<"$out" \
+   && ! grep -q 'unmarked change' <<<"$out"; then
+  ok "marking the change brings it back under every check"
+else
+  no "marking the change did not restore the checks (rc=$rc)" "$out"
+fi
+rm -rf "$U"
+
+echo "L18 a team's own root instruction file: only the HARD RULE block we appended is in scope, not the rest of the file"
+H="$(mktemp -d)"; mkdir -p "$H/openspec"
+cat > "$H/CLAUDE.md" <<'EOF'
+# Team instructions
+
+[team link](./nowhere.md)
+
+## HARD RULE — disposer self-check
+After creating or editing ANY file under openspec/ or serpens/, run:
+    ./serpens/bin/serpens-sdd verify-docs
+Fix every error and re-run until green.
+
+## Another team section
+[another broken one](./also-nowhere.md)
+EOF
+out=$(node "$LINT" "$H" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && ! grep -q 'nowhere.md' <<<"$out" && ! grep -q 'also-nowhere.md' <<<"$out"; then
+  ok "a team's own links outside the HARD RULE block are none of our business"
+else
+  no "the whole team file was linted, not just our block (rc=$rc)" "$out"
+fi
+rm -rf "$H"
+
+echo "L19 a main spec over cap: an untouched capability only WARNs; a capability a marked change touches is still an error"
+W="$(mktemp -d)"; mkdir -p "$W/openspec/specs/big" "$W/openspec/changes/c1/specs/big" "$W/serpens"
+awk 'BEGIN { print "# Big"; for (i = 0; i < 405; i++) print "line" }' > "$W/openspec/specs/big/spec.md"
+printf '{\n  "schema_version": 1,\n  "repo": "r",\n  "source_digest": "d",\n  "capabilities": [\n    {"id": "big", "title": "Big", "path": "openspec/specs/big/spec.md", "summary": "s"}\n  ]\n}\n' > "$W/serpens/index.json"
+out=$(node "$LINT" "$W" 2>&1); rc=$?
+if [ "$rc" -eq 0 ] && grep -q 'hard cap 400' <<<"$out" && grep -q 'untouched by any Serpens-marked change' <<<"$out"; then
+  ok "an untouched oversized main spec only warns"
+else
+  no "an untouched main spec's cap was still an error (rc=$rc)" "$out"
+fi
+mark_change "$W/openspec/changes/c1"
+cat > "$W/openspec/changes/c1/specs/big/spec.md" <<'EOF'
+## ADDED Requirements
+### Requirement: X
+The service SHALL expose GET /x and return 200.
+
+#### Scenario: ok
+- WHEN GET /x
+- THEN 200
+EOF
+out=$(node "$LINT" "$W" 2>&1); rc=$?
+if [ "$rc" -eq 1 ] && grep -q 'openspec/specs/big/spec.md: 407 lines (hard cap 400)' <<<"$out"; then
+  ok "a marked change touching this capability makes the cap a real error again"
+else
+  no "a touched capability's cap stopped being enforced (rc=$rc)" "$out"
+fi
+rm -rf "$W"
 
 echo
 echo "PASS=$PASS FAIL=$FAIL"

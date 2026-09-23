@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +11,7 @@ const TOOLS_DIR = join(__dirname, '..', 'tools');
 
 // The bug this file guards against (weak-model gate, fix round 2): `serpens-sdd index` run from
 // inside a NESTED subdirectory (e.g. openspec/) used to resolve its root from the raw process
-// cwd, silently creating a phantom `openspec/openspec/repo.txt` and exiting 0 — a command that
+// cwd, silently creating a phantom `openspec/serpens/repo.txt` and exiting 0 — a command that
 // corrupts a repository's layout while reporting success. gen-index.mjs, serpens-lint.mjs and
 // check-contract-split-brain.mjs all shared the identical `resolve(argv[2] ?? '.')` default;
 // all three now fall back to `git rev-parse --show-toplevel` (like check-openspec-root.sh and
@@ -33,8 +33,8 @@ test('gen-index.mjs run from a nested openspec/ subdirectory writes the index at
   const nested = join(repo, 'openspec');
   execFileSync(process.execPath, [join(TOOLS_DIR, 'gen-index.mjs')], { cwd: nested });
 
-  assert.ok(existsSync(join(repo, 'openspec', 'index.json')), 'index.json must land at the real repo root');
-  assert.ok(existsSync(join(repo, 'openspec', 'index.md')), 'index.md must land at the real repo root');
+  assert.ok(existsSync(join(repo, 'serpens', 'index.json')), 'index.json must land at the real repo root');
+  assert.ok(existsSync(join(repo, 'serpens', 'index.md')), 'index.md must land at the real repo root');
   assert.ok(!existsSync(join(repo, 'openspec', 'openspec')), 'must NOT create a nested openspec/openspec/ phantom store');
 });
 
@@ -66,7 +66,7 @@ test('an explicit positional root still wins over cwd for all three (no behavior
   const repo = makeRepo();
   const elsewhere = mkdtempSync(join(tmpdir(), 'serpens-sdd-root-resolution-elsewhere-'));
   execFileSync(process.execPath, [join(TOOLS_DIR, 'gen-index.mjs'), repo], { cwd: elsewhere });
-  assert.ok(existsSync(join(repo, 'openspec', 'index.json')), 'explicit positional root must still be honored');
+  assert.ok(existsSync(join(repo, 'serpens', 'index.json')), 'explicit positional root must still be honored');
 });
 
 // A globally-installed CLI is normally run OUTSIDE any git repository, and `findGitRoot` is
@@ -84,4 +84,52 @@ test('findGitRoot outside a git repository is silent on stderr, not just correct
   assert.equal(r.stderr.trim(), '',
     `nothing may reach stderr on a successful run; got: ${r.stderr.trim()}`);
   rmSync(outside, { recursive: true, force: true });
+});
+
+// Step 6 (gap 3): a repo-local install (serpens/topology = `repo-local`) has no store, so the two
+// store-only tools must refuse with a clear message instead of guessing a store path.
+function makeRepoLocalRepo() {
+  const repo = makeRepo();
+  mkdirSync(join(repo, 'serpens'), { recursive: true });
+  writeFileSync(join(repo, 'serpens', 'topology'), 'repo-local\n');
+  return repo;
+}
+
+test('catalog (aggregate-index.mjs) in a repo-local repository exits non-zero and says why', () => {
+  const repo = makeRepoLocalRepo();
+  const r = spawnSync(process.execPath, [join(TOOLS_DIR, 'aggregate-index.mjs')], { cwd: repo, encoding: 'utf8' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /repo-local/);
+  assert.match(r.stderr, /no system store/);
+  assert.equal(existsSync(join(repo, 'serpens', 'catalog.json')), false);
+});
+
+test('sync-submodules.sh in a repo-local repository exits non-zero and says why', () => {
+  const repo = makeRepoLocalRepo();
+  const r = spawnSync('bash', [join(TOOLS_DIR, 'sync-submodules.sh'), '--repos-from', '-', '--store-root', repo],
+    { cwd: repo, encoding: 'utf8', input: '' });
+  assert.notEqual(r.status, 0);
+  assert.match(r.stderr, /repo-local/);
+  assert.equal(existsSync(join(repo, '.gitmodules')), false);
+});
+
+test('git-naming reads serpens/branching.md from the repository itself (repo-local facts, no env var)', () => {
+  const repo = makeRepoLocalRepo();
+  writeFileSync(join(repo, 'serpens', 'branching.md'), [
+    '# Branching', '', '<!-- serpens:section branching-contract -->',
+    '| Field | Value |', '|---|---|',
+    '| `ticket-pattern`   | [A-Z][A-Z0-9]+-[0-9]+ |',
+    '| `branch-pattern`   | story/<TICKET> |',
+    '| `commit-types`     | feat,fix |',
+    '| `exempt-branches`  | ^(main)$ |', '',
+  ].join('\n'));
+  execFileSync('git', ['add', 'serpens/'], { cwd: repo }); // owned path staged → Serpens work
+  const env = { ...process.env };
+  delete env.SERPENS_SDD_CONVENTIONS_BRANCHING;
+  execFileSync('git', ['checkout', '-q', '-b', 'story/ABCD-1'], { cwd: repo });
+  const good = spawnSync('bash', [join(TOOLS_DIR, 'check-git-naming.sh'), '--branch'], { cwd: repo, encoding: 'utf8', env });
+  assert.equal(good.status, 0, good.stderr);
+  execFileSync('git', ['checkout', '-q', '-b', 'feature/ABCD-1'], { cwd: repo });
+  const bad = spawnSync('bash', [join(TOOLS_DIR, 'check-git-naming.sh'), '--branch'], { cwd: repo, encoding: 'utf8', env });
+  assert.notEqual(bad.status, 0, 'the built-in feature/<TICKET> default must NOT apply once the repo has its own contract');
 });

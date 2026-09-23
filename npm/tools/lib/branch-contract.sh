@@ -13,7 +13,7 @@
 #   2. the SERPENS_SDD_CONVENTIONS_BRANCHING environment variable — the route the installed
 #      hook wiring is expected to set, the same shape as the SERPENS_SDD_* variables
 #      src/resolve.mjs already resolves for the rest of the config;
-#   3. the default location, <repo-root>/conventions/branching.md.
+#   3. the default location, <repo-root>/serpens/branching.md.
 # A file that does not exist at the resolved location is not an error: the built-in defaults
 # apply, byte-identical to the pre-contract behaviour. The SAME is true of a file that exists
 # but carries no `<!-- serpens:section branching-contract -->` anchor at all — this is exactly
@@ -157,7 +157,7 @@ bc_resolve_conventions_path() {
   if [ -z "$root" ]; then
     root=$(git rev-parse --show-toplevel 2>/dev/null || pwd)
   fi
-  printf '%s/conventions/branching.md\n' "$root"
+  printf '%s/serpens/branching.md\n' "$root"
 }
 
 # Compile BC_BRANCH_PATTERN + BC_TICKET_RE into the two regexes both guards read: the plain
@@ -209,7 +209,7 @@ bc_valid_ere() {
 #
 # `explicit` (1/0) carries PROVENANCE, not content: it is 1 when this path came from an explicit
 # --conventions flag or the SERPENS_SDD_CONVENTIONS_BRANCHING env var, 0 for the default
-# <repo-root>/conventions/branching.md. That distinction is exactly what decides what "no
+# <repo-root>/serpens/branching.md. That distinction is exactly what decides what "no
 # anchor found" means (spec-org-facts-slice-branching-2026-09-11.md §7, D2):
 #   - default path, no anchor at all -> this is stage3-store.mjs's unfilled prose template,
 #     installed on EVERY install unconditionally; treated as "unconfigured", defaults apply.
@@ -375,7 +375,7 @@ bc_load() {
   path="$(bc_resolve_conventions_path "$explicit_arg" "$root")"
   BC_PATH="$path"
   # Provenance: an explicit --conventions arg or the env var both name the file on purpose; only
-  # the derived default path (repo-root/conventions/branching.md, with neither of those set)
+  # the derived default path (repo-root/serpens/branching.md, with neither of those set)
   # gets the "file present but no anchor -> unconfigured" pass (§7, D2).
   if [ -n "$explicit_arg" ] || [ -n "${SERPENS_SDD_CONVENTIONS_BRANCHING:-}" ]; then
     is_explicit=1

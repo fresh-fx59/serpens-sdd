@@ -40,6 +40,8 @@ const TOOL_PURPOSES = {
   catalog: 'Aggregate per-folder indexes into one catalog',
   'index-code': 'Build a code search index (zoekt)',
   version: 'Print the installed kit edition/version',
+  uninstall: 'Reverse a serpens-sdd install; dry-run by default, --apply to execute',
+  'opsx-sync': "Re-run `openspec update` for a relocated port (e.g. gigacode) and relocate the refresh; dry-run by default, --apply to execute",
 };
 
 /**

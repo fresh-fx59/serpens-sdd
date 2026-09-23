@@ -22,7 +22,7 @@ lefthook version     # install through the approved internal channel first
 The OpenSpec CLI is pinned and internal. The package is `@fission-ai/openspec`;
 the bare name `openspec` on the public registry is an unrelated empty `0.0.0`
 placeholder and will silently install nothing usable. Record the pinned version
-in `port-facts.md` and prove it once:
+in `serpens/port-facts.md` and prove it once:
 
 ```bash
 npx @fission-ai/openspec@<pinned-version> --version
@@ -111,7 +111,7 @@ a `skills/` subdirectory. It exits 1 rather than guess when it finds more than o
 project instruction file — the `AGENTS.md` analogue, whatever this port calls it — needs no
 configuration: the lint picks up every ALL-CAPS `.md` at the repository root except the usual
 project files (README, LICENSE, CHANGELOG, CONTRIBUTING, SECURITY, CODE_OF_CONDUCT, NOTICE).
-Record both names in `port-facts.md` (P1) so a human reading the note knows what they are.
+Record both names in `serpens/port-facts.md` (P1) so a human reading the note knows what they are.
 
 The installed commands call the OpenSpec **CLI**, never a generated slash command.
 Slash commands differ between versions and profiles — OpenSpec 1.10's core profile
@@ -144,10 +144,10 @@ prove them at the end of stage 3 instead, against the registered store:
 `store register`, `store list`, `show <change-id> --type change --store <id> --json --deltas-only`,
 `show <spec-id> --type spec --store <id>`, `list --specs --store <id>`, and
 `instructions specs --change <id> --store <id> --json`. Record every proven call with its
-output in `port-facts.md`.
+output in `serpens/port-facts.md`.
 
 Delete the probe change afterwards. Record the resolved token and the six proven calls
-in `port-facts.md`.
+in `serpens/port-facts.md`.
 
 Upstream Superpowers is not required. Use the self-contained `skills/spns-*`
 files. If the port has no skill mechanism, inline each referenced skill body into
@@ -212,14 +212,14 @@ removing project-owned files:
 # The shim: one generated file replaces the eleven copies. `serpens-sdd init` writes it during this
 # stage (the `writeShim()` call in `stage3()`, src/stages/stage3-store.mjs — a function name, not a
 # line number, so this citation cannot rot). An operator running the stages by hand proves it with:
-test -x "$SERPENS_SYSTEM_STORE_ROOT/tools/serpens-sdd" && "$SERPENS_SYSTEM_STORE_ROOT/tools/serpens-sdd" version
-install -m 0644 "$SERPENS_SDD_ROOT/templates/port-facts.md" "$SERPENS_SYSTEM_STORE_ROOT/port-facts.md"
-install -m 0644 "$SERPENS_SDD_ROOT/templates/conventions-branching.md" "$SERPENS_SYSTEM_STORE_ROOT/conventions/branching.md"
-mkdir -p "$SERPENS_SYSTEM_STORE_ROOT/templates"
-install -m 0644 "$SERPENS_SDD_ROOT/templates/store-contract.md"  "$SERPENS_SYSTEM_STORE_ROOT/templates/"
-install -m 0644 "$SERPENS_SDD_ROOT/templates/testing-stack.md"   "$SERPENS_SYSTEM_STORE_ROOT/templates/"
-install -m 0644 "$SERPENS_SDD_ROOT/templates/research.md"        "$SERPENS_SYSTEM_STORE_ROOT/templates/"
-install -m 0644 "$SERPENS_SDD_ROOT/templates/adr.md"             "$SERPENS_SYSTEM_STORE_ROOT/templates/"
+test -x "$SERPENS_SYSTEM_STORE_ROOT/serpens/bin/serpens-sdd" && "$SERPENS_SYSTEM_STORE_ROOT/serpens/bin/serpens-sdd" version
+install -m 0644 "$SERPENS_SDD_ROOT/templates/port-facts.md" "$SERPENS_SYSTEM_STORE_ROOT/serpens/port-facts.md"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/conventions-branching.md" "$SERPENS_SYSTEM_STORE_ROOT/serpens/branching.md"
+mkdir -p "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/store-contract.md"  "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates/"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/testing-stack.md"   "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates/"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/research.md"        "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates/"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/adr.md"             "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates/"
 ```
 
 Initialize OpenSpec in the store using the exact pinned package and port discovered
@@ -231,7 +231,7 @@ is verified.
 Ids are a contract, not a label: cross-repo links resolve by id, so two agents
 installing the same project must produce the same string. Use `<project-id>-store`
 for `<store-id>` and the repository name from stage 1 for each repo id, both
-lower-case kebab-case. Record both in `port-facts.md`.
+lower-case kebab-case. Record both in `serpens/port-facts.md`.
 
 ## 4. Materialize project repositories as submodules
 
@@ -256,31 +256,58 @@ Resolve an orphan manually only after confirming its project binding and local w
 For each path reported by `.gitmodules`:
 
 1. run the root-derived `<serpens-sdd> state prepare-base` and resolve every stop;
-2. initialize OpenSpec in that repository with the pinned package and discovered port;
+2. give that repository an OpenSpec root. If it has **no** `openspec/` directory, initialize
+   OpenSpec in it with the pinned package and discovered port. If `openspec/` is **already
+   there**, the installer does NOT run `openspec init`; it only asserts that `openspec/specs/`,
+   `openspec/changes/`, `openspec/changes/archive/` and `openspec/config.yaml` (or `config.yml`)
+   exist and that the config parses, and stops naming the missing one if they do not. Reason:
+   `openspec init` asks "Upgrade and clean up legacy files?". It cannot ask from inside the
+   installer, so it auto-answers yes — rewriting your `CLAUDE.md`/`AGENTS.md` and deleting
+   files, some of them in your home directory. That answer is yours, not ours. Run the command
+   the installer prints in that repository yourself, answer the prompt, then re-run Serpens;
 3. run `<serpens-sdd> openspec-root` and prove the reported root is that submodule;
 4. the shim replaces the spoke tool copies: `serpens-sdd init` writes it into this submodule
    (the `writeShim()` call in `onboardOne()`, `src/stages/stage5-onboard.mjs`), never by hand. Prove it the same way as the
-   store: `test -x "$submodule/tools/serpens-sdd" && "$submodule/tools/serpens-sdd" version`. Copy
+   store: `test -x "$submodule/serpens/bin/serpens-sdd" && "$submodule/serpens/bin/serpens-sdd" version`. Copy
    only the templates the installed commands cite by path -- `adr.md` (spns-archive), `research.md`
-   and `testing-stack.md` -- into its `templates/` directory. A command that names a template the
+   and `testing-stack.md` -- into its `serpens/templates/` directory. A command that names a template the
    repository does not have is a dead instruction;
 5. copy `config/lefthook.yml.example` to `lefthook.yml` **and substitute the token in the copy**
    — the example carries four literal `<serpens-sdd>` tokens, and stage 6's substitution pass covers
    only the installed command and skill directories, never this file. A `lefthook.yml` that still
-   reads `run: <serpens-sdd> verify-docs` fails EVERY commit in the repository:
+   reads `run: <serpens-sdd> verify-docs` fails EVERY commit in the repository. **Ownership check
+   first, always**: lefthook itself reads 15 different main-config names (`lefthook.yml`,
+   `.lefthook.yml`, `.config/lefthook.yml`, and the `.yaml`/`.toml`/`.json`/`.jsonc` variants of
+   each) plus any `lefthook-local.*` override, and "more than one present and you'll never know
+   which one wins" is upstream's own warning. So before writing anything, list every one of those
+   names that already exists in the repository. None present -> write `lefthook.yml`, marked
+   with a `# serpens-sdd:generated` first line, as below. The ONLY thing present is our own
+   marked `lefthook.yml` from an earlier run -> regenerate it in place. Anything else (an
+   unmarked `lefthook.yml`, or any other of the 14 names) -> the team owns their hooks: write
+   ours to `serpens/lefthook.yml` instead, never touch theirs, and leave them a one-line manual
+   step —
+
+   ```yaml
+   extends:
+     - serpens/lefthook.yml
+   ```
+
+   — to add to their own config by hand. Do NOT run `lefthook install` in that case; the team's
+   own hook setup is theirs to manage:
 
    ```bash
-   shim='"$(git rev-parse --show-toplevel)"/tools/serpens-sdd'   # the resolved invocation, as in stage 6
+   shim='"$(git rev-parse --show-toplevel)"/serpens/bin/serpens-sdd'   # the resolved invocation, as in stage 6
    sed "s|<serpens-sdd>|$shim|g" "$SERPENS_SDD_ROOT/config/lefthook.yml.example" > "$submodule/lefthook.yml"
    grep -n '<serpens-sdd>' "$submodule/lefthook.yml" && exit 1 || true   # must find nothing
    ```
 
-   then install lefthook through the approved internal channel and run `lefthook install`;
-6. add a stable repository id at `openspec/repo.txt`, create `openspec/adr/` (with a
+   then install lefthook through the approved internal channel and run `lefthook install` —
+   only on the write/regenerate branches above;
+6. add a stable repository id at `serpens/repo.txt`, create `serpens/adr/` (with a
    `.gitkeep`, so it survives a clone — `spns-archive` writes
-   `openspec/adr/NNNN-<slug>.md` and will not create the directory for you), generate its
+   `serpens/adr/NNNN-<slug>.md` and will not create the directory for you), generate its
    index, and run the root-derived `<serpens-sdd> verify-docs`;
-6a. copy `templates/testing-stack.md` to that repository's `docs/testing-stack.md` and
+6a. copy `templates/testing-stack.md` to that repository's `serpens/testing-stack.md` and
    fill it in with the team. FIVE sections, all required: the fast and slow tiers with the
    command that runs each, the wiring boundaries only the slow tier catches, the debugging
    boundary order, and `Manual testing access` — the twelve slots naming what a tester can
@@ -300,7 +327,7 @@ For each path reported by `.gitmodules`:
    an answer you already wrote;
 6b. make that repository's `.gitignore` honest before the first run: build output, language
    caches (`__pycache__/`, `*.py[cod]`, `target/`, `build/`, `node_modules/`) and local-only
-   settings belong there. Copy `system-store-template/.gitignore` as a starting point. Untracked
+   settings belong there. Copy `system-store-template/gitignore.template` as a starting point. Untracked
    files never block a gate, but an ignored file is invisible to every gate AND can never be
    staged by accident — which is what you want for a settings file holding a password;
 7. declare the store in that repository's `openspec/config.yaml` so a spoke can
@@ -349,7 +376,7 @@ the port reads, in every onboarded repository and in the store:
 
 ```markdown
 ## HARD RULE — disposer self-check
-After creating or editing ANY file under openspec/ or docs/, run:
+After creating or editing ANY file under openspec/ or serpens/, run:
     <serpens-sdd> verify-docs
 Fix every ✗ (each error carries a remediation hint) and re-run until green
 BEFORE reporting work done or proposing a commit. Rejected writes are corrected
@@ -368,8 +395,8 @@ Copy `commands/spns-*.md` into the discovered command directory. Adapt only the
 port wrapper, frontmatter, and `{{args}}` token where required.
 
 Replace every `<openspec>` token in the installed copies with the resolved invocation from
-`port-facts.md`, and every `<serpens-sdd>` token with the shim invocation from stage 3/5 — literally
-`"$(git rev-parse --show-toplevel)"/tools/serpens-sdd`, the repository's own committed shim, which is
+`serpens/port-facts.md`, and every `<serpens-sdd>` token with the shim invocation from stage 3/5 — literally
+`"$(git rev-parse --show-toplevel)"/serpens/bin/serpens-sdd`, the repository's own committed shim, which is
 also the exact string stage 5 writes into `lefthook.yml`, so the hooks and the commands can never
 disagree. This is the DEFAULT, applied when nothing is configured; a shop that reaches the package
 another way sets `serpens_sdd.invocation` in the config file (or `--serpens-sdd-invocation`), and
@@ -393,7 +420,7 @@ Superpowers.
 TEMPLATE — adapt to the internal CI and smoke-test it before relying on it. Every
 spoke repository runs the same disposer the agent and the hook run. The CI image needs
 `@fresh-fx59/serpens-sdd` installed globally, OR the job must call the repository's own
-committed shim, `./tools/serpens-sdd` — the same file the `<serpens-sdd>` token already
+committed shim, `./serpens/bin/serpens-sdd` — the same file the `<serpens-sdd>` token already
 resolves to — because a fresh checkout has the shim file but no global install
 unless one is arranged. Add a step that runs, on every push to the spoke:
 
@@ -459,8 +486,8 @@ is installed now:
 ```bash
 installed_bin=$(node -e 'console.log(require.resolve("@fresh-fx59/serpens-sdd/bin/serpens-sdd.mjs"))' 2>/dev/null \
   || readlink -f "$(command -v serpens-sdd)")
-for shim in "$SERPENS_SYSTEM_STORE_ROOT/tools/serpens-sdd" \
-    $(git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule --quiet foreach 'echo "$toplevel/$sm_path/tools/serpens-sdd"'); do
+for shim in "$SERPENS_SYSTEM_STORE_ROOT/serpens/bin/serpens-sdd" \
+    $(git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule --quiet foreach 'echo "$toplevel/$sm_path/serpens/bin/serpens-sdd"'); do
   grep -q 'serpens-sdd shim' "$shim" || { echo "✗ $shim is missing or not a generated shim"; continue; }
   grep -qF "$installed_bin" "$shim" || { echo "✗ $shim routes to another install"; continue; }
   printf '%s -> ' "$shim"; "$shim" version
@@ -484,9 +511,39 @@ Close the install only when every line holds:
 - [ ] each onboarded repository: disposer green in pre-commit and in CI, index and
       `repo.txt` committed;
 - [ ] commands and skills installed, no `<openspec>` and no `<serpens-sdd>` token left;
-- [ ] `tools/serpens-sdd` exists in the store and in every submodule, and no `tools/*.sh` does;
+- [ ] `serpens/bin/serpens-sdd` exists in the store and in every submodule, and no `tools/*.sh` does;
 - [ ] one Serpens command executed end-to-end in the port;
 - [ ] named champion per team and a named harness owner who owns the pins, the
       catalog job, and the port re-probes;
 - [ ] the exception path written down: any story may skip the flow, with the reason
       recorded in the tracker.
+
+## 10. Single-repository trial (repo-local, no store)
+
+Use this to try Serpens on some stories in ONE repository that already runs OpenSpec by
+hand. There is no system store, no submodule, and nothing is committed or pushed. Hand-made
+OpenSpec changes (no `.serpens.yaml`) stay outside every Serpens hook and lint.
+
+```bash
+serpens-sdd init --print-config-template --topology repo-local > ../serpens-sdd.json
+# edit project, port, repo.name, repo.base_branch; keep repo.root "." (the repo's git top-level)
+cd <your-repo>
+serpens-sdd init --config ../serpens-sdd.json --dry-run   # the plan; writes nothing
+serpens-sdd init --config ../serpens-sdd.json
+```
+
+- `store:` and `repositories:` are a config error with `topology: repo-local`.
+- Stages run: 0, 3 (seeds `serpens/branching.md`, only when absent), 5, 6, 8, 9. Stages 1 and 4
+  and the store registration do not run. `prepare-base` does not run either: init never
+  switches your branch or fetches; it only checks that `repo.base_branch` exists and records
+  it as `git config serpens.baseBranch`.
+- Facts live in the repository: `serpens/branching.md`, `serpens/port-facts.md`,
+  `serpens/testing-stack.md`. `serpens/topology` says `repo-local`; `catalog` and
+  `sync-submodules` refuse there. `openspec/config.yaml` gets no `references:` entry.
+- Command scope follows the port, as in store mode: a `project`-scope port installs into
+  `<repo>/<agent_dir>`; a `user`-scope port installs into `$HOME/<agent_dir>`, visible in every
+  repository on the machine. Pass `--port-scope project` to keep a trial inside the repository.
+- The run log is `serpens/.serpens-sdd-init-<stamp>.log`, ignored by `serpens/.gitignore`.
+- Afterwards: fill `serpens/port-facts.md` and `serpens/testing-stack.md`, review the dirty tree,
+  and commit it yourself on a ticket branch. A team `lefthook.yml` is never touched: add
+  `extends: [serpens/lefthook.yml]` to it by hand.

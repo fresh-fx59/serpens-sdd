@@ -104,3 +104,32 @@ test('toolPath is lang-invariant: the executables are language-neutral, unlike k
   assert.equal(toolPath('sync-submodules', 'en'), toolPath('sync-submodules', 'ru'));
   assert.ok(!toolPath('sync-submodules', 'ru').includes('/kits/'));
 });
+
+// Step 4 of the coexistence spec (gap 4): the four self-triggering skills must bind to Serpens
+// work only, in both languages, never to "ANY"/"ALL" (EN) or "ЛЮБОЙ"/"ВСЕХ" (RU) work.
+import { readFileSync as readFileSyncForLang } from 'node:fs';
+import { join as joinForLang } from 'node:path';
+
+const SELF_TRIGGERING_SKILLS = ['spns-tdd', 'spns-verification', 'spns-debugging', 'spns-drill-down'];
+
+function skillDescription(lang, skill) {
+  const path = joinForLang(kitPath(lang), 'skills', skill, 'SKILL.md');
+  const text = readFileSyncForLang(path, 'utf8');
+  const m = /^description: (.*)$/m.exec(text);
+  if (!m) throw new Error(`${path} has no description: line`);
+  return m[1];
+}
+
+for (const skill of SELF_TRIGGERING_SKILLS) {
+  test(`${skill}: EN description does not bind to ANY/ALL work and names .serpens.yaml`, () => {
+    const description = skillDescription('en', skill);
+    assert.doesNotMatch(description, /\b(ANY|ALL)\b/);
+    assert.match(description, /\.serpens\.yaml/);
+  });
+
+  test(`${skill}: RU description does not bind to ЛЮБОЙ/ВСЕХ work and names .serpens.yaml`, () => {
+    const description = skillDescription('ru', skill);
+    assert.doesNotMatch(description, /ЛЮБОЙ|ВСЕХ/);
+    assert.match(description, /\.serpens\.yaml/);
+  });
+}

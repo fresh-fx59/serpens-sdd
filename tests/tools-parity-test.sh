@@ -308,6 +308,11 @@ parity_case() {
     # done with `sed`, not bash pattern matching, specifically because it must run unmodified on
     # a target CLI/shell this dev machine does not natively provide.
     err_a="$(printf '%s' "$err_a" | sed 's#node tools/gen-index.mjs && git add openspec/index.json openspec/index.md openspec/repo.txt#serpens-sdd index \&\& git add openspec/index.json openspec/index.md openspec/repo.txt#')"
+    # Gap 7 of the OpenSpec-coexistence list: repo.txt and both index halves are OUR artifacts
+    # and moved out of OpenSpec's directory into `serpens/`. WHERE our own files live is not
+    # behaviour either, so normalize the reference's old directory to the current one — exit
+    # code, drift detection and the rest of the message keep being compared byte for byte.
+    err_a="$(printf '%s' "$err_a" | sed -e 's#openspec/index\.#serpens/index.#g' -e 's#openspec/repo\.txt#serpens/repo.txt#g')"
   fi
   # spec-drop-inventory-file-2026-09-11.md §6: sync-submodules.sh gained `--repos-from -`
   # alongside the unchanged `--inventory`. The frozen reference script predates that change and

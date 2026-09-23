@@ -1,15 +1,20 @@
 import { existsSync, readdirSync, statSync } from 'node:fs';
+import { LAYOUT } from './layout.mjs';
 import { join } from 'node:path';
 
 /**
  * Every repository that carries generated call sites after an install: the store itself, plus
  * each materialized submodule under `<store>/submodules/`. Read-only.
- * @param {string} storeRoot
+ * In repo-local topology (step 6, gap 3) the one repository IS the only call-site root — there
+ * is no `submodules/` to walk (and a team's own `submodules/` dir must never be mistaken for ours).
+ * @param {string} storeRoot - the store root, or the repository root in repo-local
+ * @param {{repoLocal?: boolean}} [opts]
  * @returns {string[]}
  */
-export function callSiteRoots(storeRoot) {
+export function callSiteRoots(storeRoot, { repoLocal = false } = {}) {
   const roots = [];
   if (existsSync(storeRoot)) roots.push(storeRoot);
+  if (repoLocal) return roots;
   const submodulesDir = join(storeRoot, 'submodules');
   if (existsSync(submodulesDir)) {
     for (const entry of readdirSync(submodulesDir, { withFileTypes: true }).sort((a, b) => (a.name < b.name ? -1 : 1))) {
@@ -29,7 +34,7 @@ function isExecutableFile(path) {
 }
 
 /**
- * Spec §7.2: `--offline` asserts that route 1 (the generated `<repo>/tools/serpens-sdd` shim) or
+ * Spec §7.2: `--offline` asserts that route 1 (the generated `<repo>/serpens/bin/serpens-sdd` shim) or
  * route 2 (`node_modules/.bin/serpens-sdd`, only where the repository already has its own
  * `package.json`) exists for EVERY generated call site, and fails the install otherwise.
  * Route 3 (`npx --no-install`) does not count: it is the route that reaches the registry, which
@@ -52,7 +57,7 @@ export function assertOfflineRoutes({ roots }) {
   }
 
   for (const root of roots) {
-    const shim = join(root, 'tools', 'serpens-sdd');
+    const shim = join(root, LAYOUT.shim);
     const nodeModulesBin = join(root, 'node_modules', '.bin', 'serpens-sdd');
     if (isExecutableFile(shim)) {
       evidence.push(`✓ ${root}: route 1 present and executable (${shim})`);

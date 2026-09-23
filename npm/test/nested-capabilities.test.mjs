@@ -46,7 +46,7 @@ function lint(dir) {
   try { return { code: 0, out: execFileSync(process.execPath, [join(TOOLS, 'serpens-lint.mjs'), dir], { encoding: 'utf8' }) }; }
   catch (e) { return { code: e.status ?? 1, out: `${e.stdout ?? ''}${e.stderr ?? ''}` }; }
 }
-const indexIds = (dir) => JSON.parse(readFileSync(join(dir, 'openspec', 'index.json'), 'utf8')).capabilities.map((c) => c.id);
+const indexIds = (dir) => JSON.parse(readFileSync(join(dir, 'serpens', 'index.json'), 'utf8')).capabilities.map((c) => c.id);
 
 test('a NESTED capability path is indexed and passes lint', () => {
   const dir = repo(['identity/user-auth']);
@@ -94,7 +94,7 @@ test('a nested id survives the kebab-case check; a bad segment still fails it', 
   assert.equal(lint(dir).code, 0, 'slash-separated kebab segments are valid');
 
   // Hand-edit the index to an id with a non-kebab segment: the gate must still bite.
-  const p = join(dir, 'openspec', 'index.json');
+  const p = join(dir, 'serpens', 'index.json');
   const idx = JSON.parse(readFileSync(p, 'utf8'));
   idx.capabilities[0].id = 'identity/User_Auth';
   writeFileSync(p, JSON.stringify(idx, null, 2), 'utf8');
@@ -131,5 +131,5 @@ test('both tools agree on the same tree, which is what the duplication risks', (
     assert.doesNotMatch(r.out, new RegExp(`openspec/specs/${id}/: `),
       `the lint must not call ${id} a problem when the index calls it a capability`);
   }
-  assert.ok(existsSync(join(dir, 'openspec', 'index.md')));
+  assert.ok(existsSync(join(dir, 'serpens', 'index.md')));
 });

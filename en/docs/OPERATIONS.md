@@ -9,8 +9,10 @@ export REPO_ROOT="$(git rev-parse --show-toplevel)"
 <serpens-sdd> state inspect
 ```
 
-Before a new story, run `prepare-base`, create `feature/<TICKET>` from the reported
-base, publish its upstream, then run `assert-change <TICKET>`. During interrupted
+Before a new story, run `prepare-base`, ask `<serpens-sdd> git-naming --print-contract <TICKET>`
+for the branch name, create it from the reported base, publish its upstream, then run
+`assert-change <TICKET>`. The branch and commit shapes are the shop's — they live in
+`serpens/branching.md` and nothing in this kit restates them. During interrupted
 work, use `assert-change <TICKET> --allow-dirty` only after you recognize every
 local edit. A non-zero result is a hard stop.
 
@@ -52,8 +54,8 @@ predates versioning or is your own; `MODIFIED` means it carries a stamp but not 
 ## Workflow
 
 1. `spns-spec`: inspect live repositories, then place yourself before creating anything —
-   no tracker key means no branch (ask once; never invent one), and an existing
-   `feature/<TICKET>`, checked out or not, is resumed rather than recreated. Only a branch
+   no tracker key means no branch (ask once; never invent one), and an existing story
+   branch, checked out or not, is resumed rather than recreated. Only a branch
    that exists nowhere goes through `prepare-base`. Then create the change and ask the
    OpenSpec CLI for `proposal` and `specs`, one artifact at a time.
 2. `spns-plan`: assert the story branch and create current design and tasks.
@@ -67,14 +69,14 @@ predates versioning or is your own; `MODIFIED` means it carries a stamp but not 
    same ticket, never as a separate test task. `spns-autotest` is the in-code layer.
 6. After merge, `spns-archive`: place the archive commit, then run OpenSpec archive.
    With no flag it asks you which of three placements to use and never picks for you; option (1)
-   cuts a fresh `feature/<TICKET>` from the prepared base — no suffix, because
-   `<serpens-sdd> git-naming` accepts `feature/ABCD-1234` and nothing else, so a suffixed branch fails
-   the pre-push guard. `--branch <name>` names that branch; `--here` archives on the current
+   cuts a fresh story branch from the prepared base, named by
+   `<serpens-sdd> git-naming --print-contract <TICKET>` — no suffix, because `git-naming` accepts
+   the configured shape and nothing else, so a suffixed branch fails the pre-push guard. `--branch <name>` names that branch; `--here` archives on the current
    branch.
    Every mode is gated by `assert-archivable`, which requires a clean tree and a
    HEAD that already contains the configured base.
 
-The exact generated OpenSpec invocations live in `port-facts.md` and the installed
+The exact generated OpenSpec invocations live in `serpens/port-facts.md` and the installed
 commands. Re-probe them after every port or OpenSpec upgrade.
 
 ## Refresh project bindings
@@ -200,8 +202,8 @@ repeating the install. Read it before pulling the new kit.
 
 The short version: inventory every installed file with `<serpens-sdd> version identify --root <kit>`
 first, gate each repository with `<serpens-sdd> state prepare-base`, refresh the
-store's `tools/` **and** every spoke's `tools/`, reinstall commands and skills and
-re-resolve every `<openspec>` token from `port-facts.md`, stop on any
+store's `serpens/bin/` **and** every spoke's `serpens/bin/`, reinstall commands and skills and
+re-resolve every `<openspec>` token from `serpens/port-facts.md`, stop on any
 `MODIFIED` copy instead of overwriting it, re-run the negative tests, and commit
 each Git repository separately.
 

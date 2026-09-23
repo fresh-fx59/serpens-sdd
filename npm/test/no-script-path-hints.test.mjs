@@ -25,7 +25,7 @@ test('the checker actually catches a planted bad string in a message, not just i
 // Historical note for a reader of the source: this used to live at tools/gen-index.mjs before
 // the edition that deleted it. That citation is fine to keep.
 export function check() {
-  console.error('  ↳ run: node tools/gen-index.mjs && git add openspec/index.json');
+  console.error('  ↳ run: node tools/gen-index.mjs && git add serpens/index.json');
 }
 `;
   const matches = findUserFacingScriptPaths(badSource, '.mjs');

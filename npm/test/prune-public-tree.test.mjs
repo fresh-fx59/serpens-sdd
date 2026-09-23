@@ -63,13 +63,14 @@ function makeFixture() {
   return { root, vault, pub };
 }
 
-test('preserved-public-docs.sh parses to the eight §10 docs plus three root files', () => {
+test('preserved-public-docs.sh parses to the six §10 docs plus two root files '
+  + '(the rename-era MIGRATION glob and docs/RENAME.md were retired 2026-09-21)', () => {
   const preserved = loadPreservedPublicDocs(PRESERVED_DOCS_SH);
   assert.deepEqual(preserved.docNames.sort(), ['FLOW-SCHEMA.md', 'FLOW-TABLE.md', 'FLOW.md']);
-  assert.ok(preserved.docGlobs.includes('MIGRATION-*-to-current.md'));
+  assert.deepEqual(preserved.docGlobs, []);
   assert.deepEqual(
     preserved.rootFiles.sort(),
-    ['docs/RENAME.md', 'docs/common-contract.html', 'docs/index.html'],
+    ['docs/common-contract.html', 'docs/index.html'],
   );
 });
 
@@ -292,11 +293,11 @@ test('F8(a): PRESERVED_PUBLIC_ROOT_FILES is now consumed — computePrunePlan re
   assert.deepEqual(presentEmpty, []);
   assert.deepEqual(missingEmpty.sort(), preserved.rootFiles.slice().sort());
 
-  // Create one of them; it must now be reported present, the other two still missing.
-  writeFileSync(join(pub, 'docs', 'RENAME.md'), 'renamed\n');
+  // Create one of them; it must now be reported present, the other still missing.
+  writeFileSync(join(pub, 'docs', 'index.html'), 'index\n');
   const { present, missing } = checkPreservedRootFiles(pub, preserved);
-  assert.deepEqual(present, ['docs/RENAME.md']);
-  assert.deepEqual(missing.sort(), preserved.rootFiles.filter((f) => f !== 'docs/RENAME.md').sort());
+  assert.deepEqual(present, ['docs/index.html']);
+  assert.deepEqual(missing.sort(), preserved.rootFiles.filter((f) => f !== 'docs/index.html').sort());
 });
 
 test('F8(a): computePrunePlan wires rootFiles through its return value', (t) => {

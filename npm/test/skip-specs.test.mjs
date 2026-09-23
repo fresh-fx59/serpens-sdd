@@ -116,6 +116,10 @@ function makeChangeRepo({ skipSpecs }) {
     : 'schema: spec-driven\ncreated: 2026-09-11\n';
   writeFileSync(join(oss.dir, 'openspec', 'changes', 'no-spec-here', '.openspec.yaml'), yaml, 'utf8');
   writeFileSync(join(oss.dir, 'openspec', 'changes', 'no-spec-here', 'proposal.md'), '## Why\nx\n## What Changes\ny\n', 'utf8');
+  // Owned (gap 1, step 3 scopes this delta-or-skip_specs check to marked changes): this fixture
+  // represents a change WE authored, whichever way skip_specs is set.
+  writeFileSync(join(oss.dir, 'openspec', 'changes', 'no-spec-here', '.serpens.yaml'),
+    '# serpens-sdd:change-marker\nowner: serpens-sdd\n', 'utf8');
   return oss.dir;
 }
 
@@ -153,7 +157,11 @@ test('serpens-lint stays green on a change freshly scaffolded by the REAL opensp
 
   const r = runLint(oss.dir);
   assert.equal(r.code, 0, `lint must not fail a freshly scaffolded change:\n${r.out}`);
-  assert.ok(!/draft-child/.test(r.out), r.out);
+  // This change carries no .serpens.yaml (a real `openspec new change` never writes one) — gap 1,
+  // step 3 scopes change-level checks to marked changes, so it is skipped and named ONLY in the
+  // aggregate "unmarked change(s) ignored" WARN line, never as an ERROR against draft-child.
+  assert.ok(!/✗.*draft-child/.test(r.out), r.out);
+  assert.match(r.out, /unmarked change\(s\) ignored/, r.out);
 });
 
 test('negative control: a change with no skip_specs and no specs/ IS a lint error', () => {

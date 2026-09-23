@@ -141,6 +141,13 @@ export function buildCommandTable() {
     // own script location on disk, which breaks once it is no longer copied into the target
     // repository's tools/.
     'verify-docs': 'verify-docs.mjs',
+    // 'uninstall' (step 7, gap 6): the reverse of `init`, so it lives in the CLI layer the same
+    // way — a real command with its own file, not a wrapped tools/ script.
+    uninstall: 'uninstall.mjs',
+    // 'opsx-sync' (spec-openspec-coexistence-2026-09-22.md): re-runs `openspec update` for a
+    // port whose OpenSpec artifacts live under a RELOCATED agent_dir (openspec_tool set — e.g.
+    // GigaCode) and relocates the refreshed output again. Same CLI-layer shape as `uninstall`.
+    'opsx-sync': 'opsx-sync.mjs',
     ...Object.fromEntries(Object.keys(TOOL_COMMANDS).map((name) => [name, 'tools.mjs'])),
   };
 }

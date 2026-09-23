@@ -11,7 +11,7 @@ system. Payloads and queries must be copy-paste ready, not described in prose. A
 needs internal calls or private state belongs in `spns-autotest`, not here.
 
 WHAT THE TESTERS CAN ACTUALLY DO is a fact about THIS repository, not about this command. Read
-`docs/testing-stack.md` and follow its `Manual testing access` section. If that file does not
+`serpens/testing-stack.md` and follow its `Manual testing access` section. If that file does not
 exist, or the facts you need from it are incomplete, stop and ask the team once, then write it
 from `templates/testing-stack.md` — never guess a client, a transport, a store or a query
 language, and never name a technology that file did not name. `<serpens-sdd> verify-docs` tells
@@ -79,7 +79,7 @@ carry that TODO once per plan, and do not invent a command.
    the result expected after the change, so the tester can prove nothing else moved.
 5. Add a "worth exploring" section, clearly marked as suggestions rather than requirements: state
    transitions, permissions, concurrency, empty and overflow inputs, and — where the stores or
-   transport in `docs/testing-stack.md` have them — retention and partitioning.
+   transport in `serpens/testing-stack.md` have them — retention and partitioning.
 6. Anything you could not verify becomes `TODO(<what>)`. Never fill a payload field or an expected
    value with a guess — an unmarked guess costs the tester a false failure.
 7. Post the plan as a COMMENT on the SAME ticket this spec was written on — for a cross-repo story

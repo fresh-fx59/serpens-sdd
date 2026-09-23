@@ -9,6 +9,7 @@
   "id": "gigacode",
   "instruction_file": "GIGACODE.md",
   "label": "GigaCode",
+  "openspec_tool": "qwen",
   "scope_preference": [
     "user",
     "project"
@@ -16,5 +17,5 @@
   "skill_dir": "skills",
   "skill_layout": "dir-per-skill",
   "skills_supported": true,
-  "verified": "UNVERIFIED — operator-reported; confirm on a real GigaCode install"
+  "verified": "2026-09-23 operator confirmed on a real GigaCode install: commands/ holds Markdown files (opsx-explore.md, opsx-apply.md); skills are dir-per-skill with SKILL.md + required frontmatter, same as Qwen Code"
 }

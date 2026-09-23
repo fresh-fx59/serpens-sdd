@@ -12,7 +12,7 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    evidence; never invent it. In every selected repository, set
    `REPO_ROOT="$(git rev-parse --show-toplevel)"` and run
    `<serpens-sdd> state inspect` before trusting local code. Read
-   openspec/index.md and ONLY the living specs the story touches; follow
+   serpens/index.md and ONLY the living specs the story touches; follow
    spns-drill-down (central catalog → repo index → live files; repo wins; ≤3 hops). Verify every
    contract fact against live code. Interview the analyst — ONE question at a time,
    multiple-choice preferred — until requirements and Given/When/Then scenarios are unambiguous.
@@ -34,35 +34,45 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    how many PRs this will open. Never fan out silently.
 
 3. SINGLE REPO. Place yourself BEFORE creating anything.
-   a. TICKET GATE. The branch name needs a real tracker key (`ABCD-1234`). If `{{args}}` carries none
+   a. TICKET GATE. The branch name is built from a real tracker key. If `{{args}}` carries none
       and the story has none, there is nothing to name the branch after: ask the user ONCE —
       (1) create the ticket now through the tracker integration, (2) they give you the key,
       (3) draft the spec with NO branch and NO change folder, and say plainly it cannot be handed
-      over until a ticket exists. NEVER invent a key, never use the story title, never create
-      `feature/NO-TICKET`.
-   b. WHERE YOU ARE. The branch may already exist, and you may already be on it. Look first:
+      over until a ticket exists. NEVER invent a key, never use the story title, never name a
+      branch after a placeholder such as `NO-TICKET`.
+   b. THE BRANCH NAME IS NOT YOURS TO INVENT. Ask for it — the shape is the shop's, it lives in
+      `serpens/branching.md`, and the pre-push hook enforces exactly what this prints:
+      ```bash
+      BRANCH=$(<serpens-sdd> git-naming --print-contract <TICKET> | awk -F'\t' '$1=="branch-example"{print $2}')
+      ```
+      Use `$BRANCH` verbatim everywhere below. Never assemble a branch name yourself, never assume
+      it starts with `feature/`, and never add a description suffix — a name you invented fails the
+      pre-push guard and the push is rejected. A non-zero exit here means the shop's conventions
+      file is broken: report it and stop, rather than falling back to a guess.
+   c. WHERE YOU ARE. The branch may already exist, and you may already be on it. Look first:
       ```bash
       git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD
-      git -C "$REPO_ROOT" show-ref --verify --quiet refs/heads/feature/<TICKET> && echo local
-      git -C "$REPO_ROOT" ls-remote --heads origin feature/<TICKET>
+      git -C "$REPO_ROOT" show-ref --verify --quiet "refs/heads/$BRANCH" && echo local
+      git -C "$REPO_ROOT" ls-remote --heads origin "$BRANCH"
       ```
-      - ALREADY ON `feature/<TICKET>` → do NOT run `prepare-base`; it checks out the base and would
+      - ALREADY ON `$BRANCH` → do NOT run `prepare-base`; it checks out the base and would
         take you off your work. Run `assert-change <TICKET> --allow-dirty` and continue here. If
         `openspec/changes/<change-id>/` already exists, RESUME it — never re-create it, never
         `<openspec> new change` a second time.
-      - EXISTS LOCALLY, you are elsewhere → `git checkout feature/<TICKET>`, then `assert-change
+      - EXISTS LOCALLY, you are elsewhere → `git checkout "$BRANCH"`, then `assert-change
         <TICKET> --allow-dirty`, then resume as above.
       - EXISTS ON ORIGIN ONLY → `git fetch origin`, then
-        `git checkout -b feature/<TICKET> --track origin/feature/<TICKET>`, then `assert-change`.
+        `git checkout -b "$BRANCH" --track "origin/$BRANCH"`, then `assert-change`.
       - NOWHERE → run `<serpens-sdd> state prepare-base`; stop on failure.
-        Create `feature/<TICKET>` from the prepared configured base, publish its upstream with
-        `git push -u origin feature/<TICKET>`, then run
+        Create `$BRANCH` from the prepared configured base, publish its upstream with
+        `git push -u origin "$BRANCH"`, then run
         `<serpens-sdd> state assert-change <TICKET>`.
       Ask the user ONE question, printing the state you found, whenever it is contradictory: local and
-      remote have diverged, the local branch tracks something other than `origin/feature/<TICKET>`, or
+      remote have diverged, the local branch tracks something other than `origin/$BRANCH`, or
       the existing change folder belongs to a different ticket. Do not guess which one wins.
    c. Run `<openspec> new change <change-id>` — skip it when the change folder already exists.
-      Then ask the CLI for ONE artifact at a time; `<openspec> status --change <change-id> --json`
+      Then run `<serpens-sdd> state mark-change <change-id> --ticket <TICKET>` — idempotent, so a
+      resumed change without a marker gets one. Then ask the CLI for ONE artifact at a time; `<openspec> status --change <change-id> --json`
       is the authority on which artifacts this schema needs and their state — never assume the id
       list is fixed. This command owns `proposal` and `specs`, the two `spns-plan` does not touch:
       ```bash
@@ -85,7 +95,7 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
       only DISCOVERS about the system as it already is go to research.md under a heading
       `## OBSERVABLE CONTRACT`, as pointers.
       WHAT THAT BLOCK CONTAINS is a fact about THIS repository, not about this command. Read
-      `docs/testing-stack.md` and follow its `Manual testing access` section: record one pointer per
+      `serpens/testing-stack.md` and follow its `Manual testing access` section: record one pointer per
       slot the repository actually answers — the parts `request-idiom` names for a direct call, what
       `event-addressing` and `event-payload-format` name for a message, the records and fields
       `data-stores` names, and where `error-routing` says a rejection lands. A slot answered `none`
@@ -126,10 +136,13 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    so `cd` first, then resolve. You start this command in the SYSTEM STORE: `cd` to it if you are
    not there, set
    `STORE_ROOT="$(git rev-parse --show-toplevel)"`, then run
-   `<serpens-sdd> state prepare-base`. Create and publish
-   `feature/<parent-ticket>`, then run
+   `<serpens-sdd> state prepare-base`. Get the store branch name for the parent ticket the same
+   way as in step 3b (`git-naming --print-contract <parent-ticket>`), then create and publish it
+   and run
    `<serpens-sdd> state assert-change <parent-ticket>`. Run
    `<openspec> new change <contract-change-id>` (skip it when the folder already exists), then
+   `<serpens-sdd> state mark-change <contract-change-id> --ticket <parent-ticket>` — idempotent, so
+   a resumed change without a marker gets one. Then
    `<openspec> instructions proposal --change <contract-change-id> --json`. Before you touch
    `specs`, read its reported state in `<openspec> status --change <contract-change-id> --json`:
    `skipped` means this change's `.openspec.yaml` sets `skip_specs: true` — it is SATISFIED, and
@@ -161,14 +174,17 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    a. Enter the submodule first — `cd "$STORE_ROOT/submodules/<repo>"` — and only then set
       `REPO_ROOT="$(git rev-parse --show-toplevel)"`. Verify it: `REPO_ROOT` must be the submodule
       path, not `STORE_ROOT`. If they are equal you are still in the store and every artifact would
-      land in the wrong repository — stop and cd. Place yourself exactly as in step 3b, using
-      the child ticket: if you are already on `feature/<child-ticket>` skip `prepare-base` and resume;
+      land in the wrong repository — stop and cd. Place yourself exactly as in steps 3b-3c, using
+      the child ticket: ask `git-naming --print-contract <child-ticket>` for the name, and if you
+      are already on it skip `prepare-base` and resume;
       if the branch exists locally or on origin, check it out; only when it exists nowhere run
       `<serpens-sdd> state prepare-base`, create and publish it. Finish with
       `<serpens-sdd> state assert-change <child-ticket>`. The child tickets
       come from step 4, so the ticket gate is already satisfied here.
    b. Run `<openspec> new change <change-id>` from inside the submodule, so the change folder is
-      that repository's own `openspec/changes/<change-id>/` (skip when it exists), then, one artifact at a time,
+      that repository's own `openspec/changes/<change-id>/` (skip when it exists), then run
+      `<serpens-sdd> state mark-change <change-id> --ticket <child-ticket>` — idempotent, so a
+      resumed change without a marker gets one. Then, one artifact at a time,
       `<openspec> instructions proposal --change <change-id> --json` first. Then read `specs`'
       reported state in `<openspec> status --change <change-id> --json` BEFORE you touch it:
       `skipped` means this child's `.openspec.yaml` sets `skip_specs: true` — a legitimate "no
@@ -208,7 +224,7 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
       only DISCOVERS about the system as it already is go to research.md under a heading
       `## OBSERVABLE CONTRACT`, as pointers.
       WHAT THAT BLOCK CONTAINS is a fact about THIS repository, not about this command. Read
-      `docs/testing-stack.md` and follow its `Manual testing access` section: record one pointer per
+      `serpens/testing-stack.md` and follow its `Manual testing access` section: record one pointer per
       slot the repository actually answers — the parts `request-idiom` names for a direct call, what
       `event-addressing` and `event-payload-format` name for a message, the records and fields
       `data-stores` names, and where `error-routing` says a rejection lands. A slot answered `none`

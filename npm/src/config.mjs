@@ -1,6 +1,9 @@
 import { relative, resolve } from 'node:path';
 import { classifyOpenspecVersion } from './openspecversion.mjs';
 
+/** The two install topologies (step 6, gap 3). `store` is the default. */
+export const TOPOLOGIES = ['store', 'repo-local'];
+
 const KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/;
 // Approximation of `git check-ref-format --branch` semantics.
 const BRANCH = /^(?!\/|.*([/.]\.|\/\/|@\{|\\\\))[^\040\177 ~^:?*[]+(?<![./])$/;
@@ -28,16 +31,50 @@ export function validateConfig(obj, opts = {}) {
     errors.push('project must be lower-case kebab-case (e.g. acme-billing)');
   }
 
-  // store
+  // topology (step 6, gap 3 — spec-openspec-coexistence-2026-09-22.md). `store` (the default,
+  // unchanged behaviour) = a sibling system store plus submodules; `repo-local` = ONE repository,
+  // no store, no submodule, no push. `store:`/`repositories:` are FORBIDDEN in repo-local rather
+  // than ignored, so nobody believes a store is in play when none is.
+  const topology = config.topology === undefined ? 'store' : config.topology;
+  if (!TOPOLOGIES.includes(topology)) {
+    errors.push(`topology must be one of ${TOPOLOGIES.join(', ')} (got '${config.topology}')`);
+  }
+
+  if (topology === 'repo-local') {
+    if (config.store !== undefined) {
+      errors.push('store: is not allowed with topology repo-local (there is no system store) — remove it');
+    }
+    if (config.repositories !== undefined) {
+      errors.push('repositories: is not allowed with topology repo-local (the one repository is repo:) — remove it');
+    }
+    const repo = config.repo && typeof config.repo === 'object' ? config.repo : {};
+    // repo.root is NOT subject to the store's outside-the-checkout rule: the trial user runs
+    // init from inside their own repository. That it is its own git top-level is proven by
+    // `init` (a git call), not here — this validator stays pure.
+    if (!isNonEmptyString(repo.root)) {
+      errors.push('repo.root is required with topology repo-local (the repository to onboard, e.g. .)');
+    }
+    if (!isNonEmptyString(repo.name) || !KEBAB.test(repo.name)) {
+      errors.push('repo.name must be lower-case kebab-case (written to serpens/repo.txt)');
+    }
+    if (!isNonEmptyString(repo.base_branch) || !BRANCH.test(repo.base_branch)) {
+      errors.push('repo.base_branch must be a valid git branch name');
+    }
+  }
+
+  // store (store topology only)
+  const isStore = topology !== 'repo-local';
   const storeIn = config.store && typeof config.store === 'object' ? config.store : {};
   const store = { ...storeIn };
-  if (!isNonEmptyString(store.id)) {
+  if (isStore && !isNonEmptyString(store.id)) {
     store.id = isNonEmptyString(config.project) ? `${config.project}-store` : undefined;
   }
-  if (!isNonEmptyString(store.id) || !KEBAB.test(store.id)) {
+  if (isStore && (!isNonEmptyString(store.id) || !KEBAB.test(store.id))) {
     errors.push('store.id must be lower-case kebab-case (e.g. acme-billing-store)');
   }
-  if (!isNonEmptyString(store.root)) {
+  if (!isStore) {
+    // repo-local: no store to validate.
+  } else if (!isNonEmptyString(store.root)) {
     errors.push('store.root is required');
   } else {
     const absRoot = resolve(resolveFrom, store.root);
@@ -49,20 +86,20 @@ export function validateConfig(obj, opts = {}) {
       errors.push('store.root must resolve outside the serpens-sdd checkout');
     }
   }
-  if (!isNonEmptyString(store.remote)) {
+  if (isStore && !isNonEmptyString(store.remote)) {
     errors.push('store.remote must be a non-empty string');
   }
-  if (!isNonEmptyString(store.base_branch) || !BRANCH.test(store.base_branch)) {
+  if (isStore && (!isNonEmptyString(store.base_branch) || !BRANCH.test(store.base_branch))) {
     errors.push('store.base_branch must be a valid git branch name');
   }
 
   // repositories
   const repositories = Array.isArray(config.repositories) ? config.repositories : [];
-  if (!Array.isArray(config.repositories)) {
+  if (isStore && !Array.isArray(config.repositories)) {
     errors.push('repositories must be an array');
   }
   const seenNames = new Set();
-  repositories.forEach((repo, i) => {
+  if (isStore) repositories.forEach((repo, i) => {
     const r = repo && typeof repo === 'object' ? repo : {};
     const path = `repositories[${i}]`;
     if (!isNonEmptyString(r.name) || !KEBAB.test(r.name)) {
@@ -101,14 +138,17 @@ export function validateConfig(obj, opts = {}) {
 
   const value = {
     ...config,
+    topology,
     project: config.project,
     lang,
     port_scope,
     openspec,
-    store,
-    repositories,
     facts,
   };
+  if (isStore) {
+    value.store = store;
+    value.repositories = repositories;
+  }
 
   return { ok: errors.length === 0, errors, value };
 }

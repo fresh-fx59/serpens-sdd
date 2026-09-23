@@ -39,6 +39,20 @@ if [ -n "$INVENTORY" ] && [ ! -f "$INVENTORY" ]; then
   exit 2
 fi
 
+# Repo-local topology (step 6, gap 3): one repository, no system store, no submodules. Read
+# serpens/topology (the config file is absent at hook time) at the current repository's top
+# level and at an explicit --store-root, and refuse rather than reconcile into a phantom store.
+is_repo_local() {
+  [ -n "$1" ] && [ -f "$1/serpens/topology" ] && [ "$(tr -d '[:space:]' < "$1/serpens/topology")" = "repo-local" ]
+}
+cwd_top=$(git rev-parse --show-toplevel 2>/dev/null || true)
+for candidate in "$cwd_top" "$STORE_ROOT"; do
+  if is_repo_local "$candidate"; then
+    echo "✗ sync-submodules: $candidate is a repo-local install (serpens/topology = repo-local) — there is no system store and no submodules to reconcile" >&2
+    exit 2
+  fi
+done
+
 if [ -z "$STORE_ROOT" ]; then
   script_dir=$(cd "$(dirname "$0")" && pwd -P)
   installed_candidate=$(cd "$script_dir/.." && pwd -P)

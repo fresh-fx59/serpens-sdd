@@ -12,12 +12,15 @@ serpens-version: 2026-09-21.1
    Молча не останавливайся.
    Затем выбери место работы. Без флага спроси пользователя ОДИН раз, какой из трёх
    вариантов, покажи в вопросе текущую ветку и дождись ответа — сам не решай:
-   - (1) свежая `feature/<TICKET>` от базы: выполни
-     `<serpens-sdd> state prepare-base`, затем
-     `git checkout -b feature/<TICKET>` — пересоздай ветку истории, которую merge обычно удалил.
-     Шаг 5 опубликует её и откроет PR. Никаких суффиксов: `<serpens-sdd> git-naming` принимает только
-     `feature/ABCD-1234` и ничего другого, поэтому суффикс не проходит pre-push guard и push отклоняется.
-   - (2) ветка с твоим именем: то же самое, но имя обязано совпадать с `feature/ABCD-1234`.
+   - (1) свежая ветка истории от базы: выполни
+     `<serpens-sdd> state prepare-base`, спроси имя у
+     `<serpens-sdd> git-naming --print-contract <TICKET>` (поле `branch-example`), затем
+     `git checkout -b "$BRANCH"` — пересоздай ветку истории, которую merge обычно удалил.
+     Шаг 5 опубликует её и откроет PR. Бери напечатанное имя дословно: форма принадлежит команде,
+     живёт в `serpens/branching.md`, и `<serpens-sdd> git-naming` принимает только её — имя,
+     собранное вручную, или имя с суффиксом не проходит pre-push guard, и push отклоняется.
+   - (2) ветка с твоим именем: то же самое, но имя обязано совпадать с тем, что печатает
+     `--print-contract`.
    - (3) здесь: останься в текущей ветке и НЕ запускай `prepare-base`.
    Флаг отвечает на вопрос заранее и снимает его: `--branch <имя>` — это (2), `--here` — (3).
    Затем в любом режиме выполни `<serpens-sdd> state assert-archivable`;
@@ -40,14 +43,14 @@ serpens-version: 2026-09-21.1
    никогда не требуй delta spec — и CLI вернёт `"specsUpdated": false`; это ожидаемый успешный
    исход для такого изменения, а не сбой.
 2. По решениям proposal, research.md и поправкам спеки создай ADR через
-   `templates/adr.md` в `openspec/adr/NNNN-<slug>.md`. Принятые ADR не изменяй.
+   `serpens/templates/adr.md` в `serpens/adr/NNNN-<slug>.md`. Принятые ADR не изменяй.
 3. Запиши индекс: `<serpens-sdd> index`. Шаг обязателен: verify-docs
    запускает только `<serpens-sdd> index --check`, который показывает расхождение, но ничего не пишет.
 4. Выполни `<serpens-sdd> verify-docs`; результат должен быть зелёным.
 5. КОММИТЬ САМ — оператор не выполняет git за тебя, и шаг, который закончился незакоммиченной
    работой, не завершён. Добавляй в индекс ровно те файлы, которые дал этот шаг, ПО ПУТИ, И
-   НАЗЫВАЙ ФАЙЛЫ ИНДЕКСА ЯВНО — `git add openspec/specs/<capability>/... openspec/adr/NNNN-<slug>.md
-   openspec/index.json openspec/index.md openspec/repo.txt` (`repo.txt` только если шаг 3 создал
+   НАЗЫВАЙ ФАЙЛЫ ИНДЕКСА ЯВНО — `git add openspec/specs/<capability>/... serpens/adr/NNNN-<slug>.md
+   serpens/index.json serpens/index.md serpens/repo.txt` (`repo.txt` только если шаг 3 создал
    его впервые) — никогда `git add -A` или `git add .`. Проверка индекса в verify-docs теперь
    отказывает на untracked или незастейдженном индексе (`checkIndexInGit`): пропущенный `git add`
    ловится, а не проходит незамеченным — но только для файлов, названных здесь явно, так что

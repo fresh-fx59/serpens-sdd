@@ -1,10 +1,15 @@
-import { existsSync, mkdirSync, copyFileSync, cpSync, realpathSync } from 'node:fs';
+import {
+  existsSync, mkdirSync, copyFileSync, cpSync, realpathSync, readFileSync, writeFileSync,
+} from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { writeShim } from '../shim.mjs';
+import { LAYOUT, SERPENS_DIR as SERPENS_DIR_NAME } from '../layout.mjs';
 import { registerSystemStore, readCommittedStoreId, registrationPlan } from '../storeregistry.mjs';
 import { toolPath } from '../cli/tools.mjs';
 import { splitInvocation } from '../invocation.mjs';
+import { openspecToolId } from '../ports.mjs';
+import { snapshotOpenspecToolDir, relocateAfterOpenspecRun } from '../openspec-tool-relocate.mjs';
 
 // docs/SETUP.md §3: the four generic templates from templates/*.md go into <store>/templates/
 // verbatim; the other two are renamed/relocated, not copied as-is.
@@ -46,15 +51,15 @@ export function storePlan({ config, port, storeRoot, kitDir }) {
     lines.push(`                        $ git -C ${storeRoot} remote add origin ${remote}`);
   }
   lines.push(`  $ git -C ${storeRoot} config serpens.baseBranch ${base}`);
-  lines.push(`  $ mkdir -p ${join(storeRoot, 'templates')}`);
+  lines.push(`  $ mkdir -p ${join(storeRoot, LAYOUT.templates)}`);
   for (const file of PLAIN_TEMPLATES) {
-    lines.push(`  $ cp ${join(kitDir, 'templates', file)} ${join(storeRoot, 'templates', file)}`);
+    lines.push(`  $ cp ${join(kitDir, 'templates', file)} ${join(storeRoot, LAYOUT.templates, file)}`);
   }
-  lines.push(`  $ cp ${join(kitDir, 'templates', 'port-facts.md')} ${join(storeRoot, 'port-facts.md')}`);
-  lines.push(`  $ mkdir -p ${join(storeRoot, 'conventions')}`);
-  lines.push(`  $ cp ${join(kitDir, 'templates', 'conventions-branching.md')} ${join(storeRoot, 'conventions', 'branching.md')}`);
-  lines.push(`  $ write ${join(storeRoot, 'tools', 'serpens-sdd')}   # the shim; no tools/ script copies, ever`);
-  lines.push(`  $ ${openspec} init${port?.id ? ` --tools ${port.id}` : ''}   # cwd=${storeRoot}`);
+  lines.push(`  $ cp ${join(kitDir, 'templates', 'port-facts.md')} ${join(storeRoot, LAYOUT.portFacts)}`);
+  lines.push(`  $ mkdir -p ${dirname(join(storeRoot, LAYOUT.branching))}`);
+  lines.push(`  $ cp ${join(kitDir, 'templates', 'conventions-branching.md')} ${join(storeRoot, LAYOUT.branching)}`);
+  lines.push(`  $ write ${join(storeRoot, LAYOUT.shim)}   # the shim; no script copies, ever`);
+  lines.push(`  $ ${openspec} init${openspecToolId(port) ? ` --tools ${openspecToolId(port)}` : ''}   # cwd=${storeRoot}`);
   lines.push(`  $ bash ${toolPath('openspec-root', lang)}   # cwd=${storeRoot}`);
   lines.push('  then the store-registration step (spec-openspec-store-registration-2026-09-11 §3):');
   for (const l of registrationPlan({
@@ -204,24 +209,24 @@ export async function stage3(ctx) {
 
   // Install the six templates the kit's commands cite by path. No script copies, ever — the
   // shim below replaces every `tools/<script>` copy this stage would otherwise make.
-  const templatesDir = join(storeRoot, 'templates');
+  const templatesDir = join(storeRoot, LAYOUT.templates);
   recordWrite(`mkdir -p ${templatesDir}`, () => mkdirSync(templatesDir, { recursive: true }));
   for (const file of PLAIN_TEMPLATES) {
     const src = join(kitDir, 'templates', file);
     const dest = join(templatesDir, file);
     recordWrite(`cp ${src} ${dest}`, () => copyFileSync(src, dest));
   }
-  const portFactsDest = join(storeRoot, 'port-facts.md');
+  const portFactsDest = join(storeRoot, LAYOUT.portFacts);
   recordWrite(`cp ${join(kitDir, 'templates', 'port-facts.md')} ${portFactsDest}`, () => {
     copyFileSync(join(kitDir, 'templates', 'port-facts.md'), portFactsDest);
   });
-  const conventionsDir = join(storeRoot, 'conventions');
-  const branchingDest = join(conventionsDir, 'branching.md');
+  const branchingDest = join(storeRoot, LAYOUT.branching);
+  const conventionsDir = dirname(branchingDest);
   recordWrite(`mkdir -p ${conventionsDir}`, () => mkdirSync(conventionsDir, { recursive: true }));
   recordWrite(`cp ${join(kitDir, 'templates', 'conventions-branching.md')} ${branchingDest}`, () => {
     copyFileSync(join(kitDir, 'templates', 'conventions-branching.md'), branchingDest);
   });
-  evidence.push(`templates installed: ${PLAIN_TEMPLATES.join(', ')}, port-facts.md, conventions/branching.md`);
+  evidence.push(`templates installed: ${PLAIN_TEMPLATES.join(', ')}, ${LAYOUT.portFacts}, ${LAYOUT.branching}`);
 
   const shimPath = writeShim(storeRoot, { binPath: BIN_PATH });
   evidence.push(`shim written: ${shimPath}`);
@@ -229,10 +234,17 @@ export async function stage3(ctx) {
   const { cmd: openspecCmd, args: openspecBaseArgs } = splitInvocation(config?.openspec?.invocation);
 
   const initArgs = ['init'];
-  if (port?.id) initArgs.push('--tools', port.id);
+  if (openspecToolId(port)) initArgs.push('--tools', openspecToolId(port));
+  const relocationSnapshot = snapshotOpenspecToolDir(storeRoot, port ?? {});
   const inited = await step(openspecCmd, [...openspecBaseArgs, ...initArgs], { cwd: storeRoot });
   if (inited.code !== 0) {
     return { ok: false, evidence, error: `openspec init failed in the store:\n${inited.stderr || inited.stdout}`, exitCode: 1 };
+  }
+  if (port) {
+    const relocation = relocateAfterOpenspecRun(storeRoot, port, relocationSnapshot);
+    if (relocation.moved.length > 0) {
+      evidence.push(`relocated ${relocation.moved.length} OpenSpec-generated file(s) for ${port.openspec_tool} into ${port.agent_dir}/ in the store`);
+    }
   }
 
   const rootCheck = await step('bash', [toolPath('openspec-root', lang)], { cwd: storeRoot });
@@ -263,4 +275,64 @@ export async function stage3(ctx) {
     ...(registration.skipped ? { registrationSkipped: registration.skipped } : {}),
     ...(registration.adoptedId ? { adoptedId: registration.adoptedId } : {}),
   };
+}
+
+/** The run-log pattern repo-local mode ignores inside `serpens/` (the log lives there, since
+ * there is no store to hold it — see `logPathFor` in src/cli/init.mjs). */
+export const INIT_LOG_IGNORE = '.serpens-sdd-init-*.log';
+
+/**
+ * Repo-local replacement for stage 3 (step 6, gap 3 — spec-openspec-coexistence-2026-09-22.md).
+ * There is no store: the branching contract the store would hold is seeded into the trial
+ * repository's OWN `serpens/` instead — `branching.md` from `templates/conventions-branching.md`
+ * — ONLY WHEN ABSENT, so a re-run (or a team that already edited it) never loses an answer.
+ * (`port-facts.md` is rendered by stage 6 into the same `serpens/`; see the note below.) `tools/lib/branch-contract.sh` already
+ * resolves `<repo-root>/serpens/branching.md` by default, so the hooks find it with no env var.
+ * Also seeds `serpens/.gitignore` with the init run-log pattern (our file, under our directory;
+ * the line is appended if the file exists without it). No git call, no network, no store.
+ * @param {{config: object, repoRoot: string, kitDir: string, dryRun?: boolean}} ctx
+ * @returns {Promise<{ok: boolean, evidence: string[], error?: string}>}
+ */
+export async function seedRepoFacts(ctx) {
+  const { repoRoot, kitDir, dryRun = false } = ctx;
+  const evidence = [];
+  // Only branching.md. port-facts.md is NOT seeded from the raw template here (deviation from
+  // the spec's table, recorded there): in repo-local the repository that holds the facts is
+  // also the one stage 5 onboards, and stage 5's verify-docs lints `serpens/port-facts.md` —
+  // the raw template fails that lint by design (placeholder header, `...` probe row). In store
+  // mode the same raw copy sits in the store, which stage 5 never verifies. Stage 6 writes the
+  // RENDERED port-facts.md into this repo instead (`ctx.factsRoot`), exactly as it re-renders
+  // the store's copy today.
+  const seeds = [
+    [join(kitDir, 'templates', 'conventions-branching.md'), join(repoRoot, LAYOUT.branching), LAYOUT.branching],
+  ];
+  const gitignorePath = join(repoRoot, LAYOUT.gitignore);
+
+  if (dryRun) {
+    evidence.push('dry-run: repo-local facts would be seeded (no store; nothing below is executed):');
+    for (const [src, dest] of seeds) {
+      evidence.push(`  $ cp ${src} ${dest}   # only when absent; never overwritten`);
+    }
+    evidence.push(`  $ write ${gitignorePath}   # ignores ${INIT_LOG_IGNORE}`);
+    return { ok: true, evidence };
+  }
+
+  mkdirSync(join(repoRoot, SERPENS_DIR_NAME), { recursive: true });
+  for (const [src, dest, rel] of seeds) {
+    if (existsSync(dest)) {
+      evidence.push(`${rel} already present — not overwritten`);
+      continue;
+    }
+    copyFileSync(src, dest);
+    evidence.push(`$ cp ${src} ${dest} → done`);
+  }
+  const current = existsSync(gitignorePath) ? readFileSync(gitignorePath, 'utf8') : null;
+  if (current === null) {
+    writeFileSync(gitignorePath, `${INIT_LOG_IGNORE}\n`, 'utf8');
+    evidence.push(`$ write ${gitignorePath} → done`);
+  } else if (!current.split(/\r?\n/).includes(INIT_LOG_IGNORE)) {
+    writeFileSync(gitignorePath, `${current}${current.endsWith('\n') || current === '' ? '' : '\n'}${INIT_LOG_IGNORE}\n`, 'utf8');
+    evidence.push(`$ append ${INIT_LOG_IGNORE} to ${gitignorePath} → done`);
+  }
+  return { ok: true, evidence };
 }

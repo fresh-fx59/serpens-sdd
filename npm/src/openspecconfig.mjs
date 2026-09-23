@@ -341,21 +341,56 @@ export function declareStoreReference(existingText, storeId, storeRemote) {
 }
 
 /**
- * Prove an edit only ADDED the given lines: delete the first occurrence of each added line from
- * the result and require what remains to equal the original.
+ * Prove an edit only ADDED the given lines: delete the added lines from the result and require
+ * what remains to equal the original, byte for byte.
+ *
+ * Two modes. Without `atIndex`, each added line is found by its first occurrence anywhere in the
+ * result and removed — the mode every append (end-of-file) call site uses, where "somewhere in
+ * the result" is unambiguous because nothing else in the file could produce that exact line.
+ * With `atIndex`, the added lines must appear CONTIGUOUSLY at that exact position — required for
+ * a MID-FILE insertion (gap 5's per-artifact `rules:` entries), where an append-anywhere check
+ * would wrongly accept an edit that inserted the right lines in the wrong place, or that matched
+ * one of them against an unrelated line the user already had.
  * @param {string} before
  * @param {string} after
  * @param {string[]} addedLines
  * @param {string} eol
+ * @param {number} [atIndex] - 0-based line index the added lines must occupy in `after`
  * @returns {{ok: boolean, reason?: string}}
  */
-function verifyOnlyAdded(before, after, addedLines, eol) {
+/**
+ * The inverse check for a removal (step 7, gap 6 — `serpens-sdd uninstall`): prove an edit only
+ * REMOVED the given lines, at a known position. It is literally `verifyOnlyAdded` with `before`
+ * and `after` swapped — "removing `removedLines` from `before` yields `after`" is the same claim
+ * as "adding `removedLines` to `after` yields `before`" — so this reuses that (already tested)
+ * logic rather than re-implementing it.
+ * @param {string} before - the text as it stood before the removal
+ * @param {string} after - the text uninstall is about to write
+ * @param {string[]} removedLines
+ * @param {string} eol
+ * @param {number} [atIndex] - 0-based line index the removed lines occupied in `before`
+ * @returns {{ok: boolean, reason?: string}}
+ */
+export function verifyOnlyRemoved(before, after, removedLines, eol, atIndex) {
+  return verifyOnlyAdded(after, before, removedLines, eol, atIndex);
+}
+
+export function verifyOnlyAdded(before, after, addedLines, eol, atIndex) {
   const norm = (s) => s.replace(/\r\n?/g, '\n').replace(/\n+$/, '');
   const remaining = after.replace(/\r\n?/g, '\n').split('\n');
-  for (const line of addedLines) {
-    const i = remaining.indexOf(line);
-    if (i === -1) return { ok: false, reason: `the line "${line}" is not in the result` };
-    remaining.splice(i, 1);
+  if (atIndex !== undefined) {
+    for (let k = 0; k < addedLines.length; k += 1) {
+      if (remaining[atIndex + k] !== addedLines[k]) {
+        return { ok: false, reason: `expected "${addedLines[k]}" at line ${atIndex + k + 1}, found something else` };
+      }
+    }
+    remaining.splice(atIndex, addedLines.length);
+  } else {
+    for (const line of addedLines) {
+      const i = remaining.indexOf(line);
+      if (i === -1) return { ok: false, reason: `the line "${line}" is not in the result` };
+      remaining.splice(i, 1);
+    }
   }
   if (norm(remaining.join('\n')) !== norm(before)) {
     return { ok: false, reason: 'the surrounding content changed' };
@@ -470,4 +505,440 @@ export function renameStoreReference(existingText, oldId, newId) {
 
   const text = outLines.join(r.eol) + (outLines[outLines.length - 1] === '' ? '' : r.eol);
   return { action: 'renamed', text, count: rewritten.length };
+}
+
+// ---------------------------------------------------------------------------
+// The context catalog and the per-artifact rules.
+//
+// WHY. `references:` is not the only slot OpenSpec injects. `openspec instructions <artifact>`
+// pastes `context:` into EVERY artifact instruction, and `rules[<artifactId>]` into that one
+// artifact's instruction (verified against 1.13.1: dist/core/artifact-graph/instruction-loader.js
+// :148-152, printed by dist/commands/workflow/instructions.js:136-156 inside <project_context>
+// and <rules>). Until now we wrote neither, so every instructions call we made came back with
+// `context: undefined, rules: undefined` — a slot upstream hands us for free, left empty.
+//
+// WHAT GOES IN, AND WHAT DOES NOT. This kit's facts live in files, and they stay there. What
+// `context:` gets is a CATALOG: one line per fact file saying what question that file answers,
+// so the agent can choose. It is deliberately NOT an instruction to read them all — the file
+// count grows as a shop adds facts, and "read these files" would make every artifact pay for
+// every file. The catalog costs about one line per file, forever.
+//
+// The ORDER to read something lives in `rules:`, keyed by artifact, because the stages need
+// different facts: `tasks` cannot list a test step without the testing stack, `proposal` needs
+// none of it. That split is the whole point — the catalog lets the agent choose, the rules make
+// the choice mandatory exactly where getting it wrong is expensive.
+//
+// WE NEVER OVERWRITE EITHER KEY. In a brownfield repository `context:` holds the user's own
+// prose (up to 50KB, their whole project pack) and `rules:` their own per-artifact constraints.
+// Both are theirs. If the key exists we report `unchanged` with the text to merge by hand —
+// the same stance the rest of this module takes, and the same one upstream's own init takes
+// (dist/core/init.js:806-809 does not clobber an existing config).
+
+/**
+ * Render the catalog block body — the lines that go under `context: |`.
+ *
+ * `entries` is data, not prose, so adding a fact file to the kit is one array element and the
+ * wording stays identical across every installed repository (and, once localized, across
+ * languages).
+ * @param {Array<{path: string, answers: string}>} entries
+ * @param {{preamble?: string, closing?: string}} [words] - overridable for localization
+ * @returns {string[]} body lines, unindented
+ */
+export function renderContextCatalog(entries, words = {}) {
+  const preamble = words.preamble
+    ?? "This repository's facts live in files, not in your memory. Never guess a framework, transport, store or branch name — look it up.";
+  const closing = words.closing
+    ?? 'Open only what the current step needs.';
+  const width = entries.reduce((w, e) => Math.max(w, e.path.length), 0);
+  return [
+    preamble,
+    ...entries.map((e) => `  ${e.path.padEnd(width)}  — ${e.answers}`),
+    closing,
+  ];
+}
+
+/**
+ * Add a `context:` block scalar holding the catalog, or leave a user's `context:` alone.
+ *
+ * Returns the same discriminated shape as `declareStoreReference`:
+ *   { action: 'appended', text }            a `context: |` block was added at the end
+ *   { action: 'unchanged', text, reason }   the user already has a `context:` — theirs wins
+ *   { action: 'refused', reason, manual }   nothing was written
+ * @param {string} existingText
+ * @param {Array<{path: string, answers: string}>} entries
+ * @param {{preamble?: string, closing?: string}} [words]
+ * @returns {{action: string, text?: string, reason?: string, manual?: string}}
+ */
+export function declareContextCatalog(existingText, entries, words = {}) {
+  const body = renderContextCatalog(entries, words);
+  const manual = ['context: |', ...body.map((l) => `  ${l}`)].join('\n');
+
+  if (!entries.length) {
+    return { action: 'refused', reason: 'the catalog is empty; there is nothing to declare', manual };
+  }
+  const bad = entries.find((e) => /[\n\r]/.test(e.path) || /[\n\r]/.test(e.answers));
+  if (bad) {
+    return { action: 'refused', reason: `the catalog entry for "${bad.path}" contains a newline`, manual };
+  }
+
+  const r = inspectConfig(existingText);
+  if (!r.ok) return { action: 'refused', reason: r.reason, manual };
+
+  if (r.topLevelKeys.some((k) => k.key === 'context')) {
+    return {
+      action: 'unchanged',
+      text: existingText,
+      reason: 'this config already has a `context:` — it belongs to the user and is never rewritten',
+      manual,
+    };
+  }
+
+  const { lines, eol } = r;
+  // Column 0 terminates any block scalar the file may end inside, exactly as the `references:`
+  // path relies on — a `context: |`-shaped trap cannot exist here (we just proved there is no
+  // `context:`), but a `rules:` or `operations:` block scalar can.
+  const added = ['context: |', ...body.map((l) => `  ${l}`)];
+  const kept = lines.map((l) => l.raw);
+  while (kept.length && kept[kept.length - 1].trim() === '') kept.pop();
+  const outLines = [...kept, ...added];
+  const text = outLines.join(eol) + eol;
+
+  const check = verifyOnlyAdded(existingText, text, added, eol);
+  if (!check.ok) {
+    return { action: 'refused', reason: `the edit did not verify (${check.reason}) — the file was left untouched`, manual };
+  }
+  return { action: 'appended', text };
+}
+
+/**
+ * The artifact-id entries of a top-level `rules:` block, and where the block ends.
+ *
+ * Mirrors `referenceBlock` exactly: entries are the lines at the block's OWN indentation that
+ * open a mapping key (`  <id>:`), anchored to that indentation rather than "any indented line",
+ * so a nested list under one id's rules (`  tasks:\n    - a rule`) is never mistaken for a
+ * sibling id. The first entry line's indent becomes `blockIndent`, reported back so the caller
+ * can refuse a block that does not use two spaces — inserting a two-space entry into a
+ * four-space block would parse, but it would look like a mistake to the next human who reads it,
+ * and disagreeing with the block's own convention is a footgun this tool does not need to add.
+ * @param {Array<{n: number, raw: string, inScalar: boolean}>} lines
+ * @param {{key: string, i: number}} at - the `rules:` key
+ * @returns {{ids: string[], end: number, blockIndent: number|null}}
+ */
+function rulesBlock(lines, at) {
+  const ids = [];
+  let blockIndent = null;
+  let end = lines.length;
+  // Trailing blank/comment lines inside the block must NOT push `end` past the block's last
+  // real content — an insertion at literal `lines.length` would land after a trailing blank
+  // line at EOF (every file this tool reads ends in one), visibly separated from the block by
+  // an extra empty line. `lastContent` tracks the last line that belongs to the block; `end`
+  // resolves to one past it unless a dedent (to a sibling key or column 0) is found first.
+  let lastContent = at.i;
+  for (let i = at.i + 1; i < lines.length; i += 1) {
+    const l = lines[i];
+    if (l.inScalar) { lastContent = i; continue; }
+    const t = l.raw.trim();
+    if (t === '' || t.startsWith('#')) continue;
+    if (!/^\s/.test(l.raw)) { end = i; break; } // dedented to column 0: the block ended
+    const indent = indentOf(l.raw);
+    if (blockIndent === null) blockIndent = indent;
+    if (indent < blockIndent) { end = i; break; } // dedented out of the rules block
+    lastContent = i;
+    if (indent > blockIndent) continue; // content that belongs to the id above it (its rule list)
+    const m = /^([A-Za-z_][A-Za-z0-9_.-]*)\s*:(\s|$)/.exec(t);
+    if (m) ids.push(m[1]);
+  }
+  if (end === lines.length) end = lastContent + 1;
+  return { ids, end, blockIndent };
+}
+
+/**
+ * Add a `rules:` mapping of artifact id → constraint strings, or, when a `rules:` already
+ * exists, insert only the ids the user has NOT declared — gap 5. Upstream looks rules up per
+ * artifact id (`instruction-loader.ts:382`: `Object.hasOwn(projectConfig.rules, artifactId)`), so
+ * an id we add cannot override anything of the user's: it is either absent (safe to add) or
+ * already theirs (left alone).
+ *
+ * The value shape is upstream's: `Record<artifactId, string[]>` (dist/core/project-config.js
+ * :35-41). Artifact ids are whatever the resolved schema declares — `spec-driven` ships
+ * `proposal`, `specs`, `design`, `tasks` — so the caller passes them; this module does not
+ * assume a schema, because a project-local schema may name them differently.
+ *
+ * Returns the same discriminated shape as `declareStoreReference`, plus `perId` — the caller's
+ * only way to report which ids were added and which were the user's already, since a single
+ * `action` can no longer say that for a mixed request:
+ *   { action: 'appended', text, perId }    no `rules:` existed; the whole block was added
+ *   { action: 'inserted', text, perId }    `rules:` existed; ids missing from it were inserted
+ *   { action: 'unchanged', text, perId? }  every requested id was already declared, or (no
+ *                                          `rules:` case is impossible to reach unchanged)
+ *   { action: 'refused', reason, manual }  nothing was written
+ * @param {string} existingText
+ * @param {Record<string, string[]>} rulesByArtifact
+ * @returns {{action: string, text?: string, reason?: string, manual?: string, perId?: Record<string, string>}}
+ */
+export function declareArtifactRules(existingText, rulesByArtifact) {
+  const ids = Object.keys(rulesByArtifact);
+  const added = ['rules:'];
+  for (const id of ids) {
+    added.push(`  ${id}:`);
+    for (const rule of rulesByArtifact[id]) added.push(`    - ${yamlScalar(rule)}`);
+  }
+  const manual = added.join('\n');
+
+  if (!ids.length) {
+    return { action: 'refused', reason: 'no rules were given; there is nothing to declare', manual };
+  }
+  const badId = ids.find((id) => !/^[A-Za-z0-9._-]+$/.test(id));
+  if (badId) {
+    return { action: 'refused', reason: `artifact id "${badId}" is not a plain scalar; it would need YAML quoting this tool does not do`, manual };
+  }
+  const emptyId = ids.find((id) => !Array.isArray(rulesByArtifact[id]) || rulesByArtifact[id].length === 0);
+  if (emptyId) {
+    return { action: 'refused', reason: `artifact "${emptyId}" has no rules; an empty list would say nothing`, manual };
+  }
+
+  const r = inspectConfig(existingText);
+  if (!r.ok) return { action: 'refused', reason: r.reason, manual };
+
+  const at = r.topLevelKeys.find((k) => k.key === 'rules');
+
+  if (at) {
+    const opener = r.lines[at.i].raw.trim();
+    if (/^rules:\s*[[{]/.test(opener)) {
+      return { action: 'refused', reason: 'the existing `rules:` is in flow style ({...}); this tool edits block mappings only', manual };
+    }
+    if (BLOCK_SCALAR.test(r.lines[at.i].raw)) {
+      return { action: 'refused', reason: 'the existing `rules:` opens a block scalar (|, >, …); this tool edits block mappings only', manual };
+    }
+    if (/^rules:\s+\S/.test(opener)) {
+      return { action: 'refused', reason: 'the existing `rules:` is a plain scalar; this tool edits block mappings only', manual };
+    }
+
+    const block = rulesBlock(r.lines, at);
+    if (block.blockIndent !== null && block.blockIndent !== 2) {
+      return { action: 'refused', reason: `the existing rules: block indents its ids ${block.blockIndent} spaces, not two; this tool inserts at two spaces only`, manual };
+    }
+
+    const existingIds = new Set(block.ids);
+    const perId = {};
+    const insertLines = [];
+    for (const id of ids) {
+      if (existingIds.has(id)) { perId[id] = 'unchanged'; continue; }
+      insertLines.push(`  ${id}:`);
+      for (const rule of rulesByArtifact[id]) insertLines.push(`    - ${yamlScalar(rule)}`);
+      perId[id] = 'inserted';
+    }
+
+    if (!insertLines.length) {
+      return {
+        action: 'unchanged',
+        text: existingText,
+        reason: 'this config already declares every requested artifact id under `rules:` — not rewritten',
+        manual,
+        perId,
+      };
+    }
+
+    const outLines = r.lines.map((l) => l.raw);
+    outLines.splice(block.end, 0, ...insertLines);
+    const text = outLines.join(r.eol) + (outLines[outLines.length - 1] === '' ? '' : r.eol);
+
+    const check = verifyOnlyAdded(existingText, text, insertLines, r.eol, block.end);
+    if (!check.ok) {
+      return { action: 'refused', reason: `the edit did not verify (${check.reason}) — the file was left untouched`, manual };
+    }
+    return { action: 'inserted', text, perId };
+  }
+
+  const { lines, eol } = r;
+  const kept = lines.map((l) => l.raw);
+  while (kept.length && kept[kept.length - 1].trim() === '') kept.pop();
+  const outLines = [...kept, ...added];
+  const text = outLines.join(eol) + eol;
+
+  const check = verifyOnlyAdded(existingText, text, added, eol);
+  if (!check.ok) {
+    return { action: 'refused', reason: `the edit did not verify (${check.reason}) — the file was left untouched`, manual };
+  }
+  return { action: 'appended', text, perId: Object.fromEntries(ids.map((id) => [id, 'appended'])) };
+}
+
+// ---------------------------------------------------------------------------
+// step 7 (gap 6, spec-openspec-coexistence-2026-09-22.md) — `serpens-sdd uninstall`'s reverses of
+// the three edits above. Each removal is an OWNER CHECK first: the exact bytes we would have
+// written must still be there, at the position we would have written them, or nothing is
+// touched and the caller is told to edit the file by hand.
+
+/**
+ * Remove our `references:` entry (id + remote), added by `declareStoreReference`, if — and only
+ * if — an entry naming exactly this id and remote is present. The `references:` key itself is
+ * left in place even if this was its only entry: whether the key existed before us is not
+ * something this module can prove, so removing it could delete a user's own (now-empty) key.
+ * @param {string} existingText
+ * @param {string} storeId
+ * @param {string} storeRemote
+ * @returns {{action: 'removed'|'unchanged', text: string}}
+ */
+export function removeStoreReference(existingText, storeId, storeRemote) {
+  const r = inspectConfig(existingText);
+  if (!r.ok) return { action: 'unchanged', text: existingText };
+  const at = r.topLevelKeys.find((k) => k.key === 'references');
+  if (!at) return { action: 'unchanged', text: existingText };
+  const { entries, end } = referenceBlock(r.lines, at);
+  for (const i of entries) {
+    if (entryId(r.lines[i].raw) !== storeId) continue;
+    // Find this entry's own extent (up to the next entry or the block end) and require it to
+    // be EXACTLY `- id: <id>` followed by `remote: <remote>` and nothing else — the shape
+    // `declareStoreReference` writes. Anything richer (a user's own entry that happens to share
+    // our id) is left untouched.
+    const idxInEntries = entries.indexOf(i);
+    const stop = idxInEntries + 1 < entries.length ? entries[idxInEntries + 1] : end;
+    const body = [];
+    for (let j = i; j < stop; j += 1) {
+      if (r.lines[j].inScalar) { body.push(r.lines[j]); continue; }
+      const t = r.lines[j].raw.trim();
+      if (t === '' || t.startsWith('#')) continue;
+      body.push(r.lines[j]);
+    }
+    if (body.length !== 2) continue;
+    const idLine = /^\s*-\s*id:\s*(\S+)\s*$/.exec(body[0].raw);
+    const remoteLine = /^\s*remote:\s*(.+?)\s*$/.exec(body[1].raw);
+    if (!idLine || !remoteLine || unquote(idLine[1]) !== storeId || unquote(remoteLine[1]) !== storeRemote) continue;
+
+    const outLines = r.lines.map((l) => l.raw);
+    outLines.splice(i, stop - i);
+    const text = outLines.join(r.eol) + (outLines[outLines.length - 1] === '' ? '' : r.eol);
+    const removed = [body[0].raw, body[1].raw];
+    const check = verifyOnlyRemoved(existingText, text, removed, r.eol, i);
+    if (!check.ok) return { action: 'unchanged', text: existingText };
+    return { action: 'removed', text };
+  }
+  return { action: 'unchanged', text: existingText };
+}
+
+/**
+ * Remove the `context: |` catalog block `declareContextCatalog` appended — only when the whole
+ * block, verbatim, is still at the position it was written (the file's own end, since that
+ * function only ever appends). A user's own `context:` (the `unchanged` case at install time)
+ * was never touched by us and is never touched here either.
+ * @param {string} existingText
+ * @param {Array<{path: string, answers: string}>} entries
+ * @param {{preamble?: string, closing?: string}} [words]
+ * @returns {{action: 'removed'|'unchanged', text: string}}
+ */
+export function removeContextCatalog(existingText, entries, words = {}) {
+  const r = inspectConfig(existingText);
+  if (!r.ok) return { action: 'unchanged', text: existingText };
+  const at = r.topLevelKeys.find((k) => k.key === 'context');
+  if (!at) return { action: 'unchanged', text: existingText };
+
+  const body = renderContextCatalog(entries, words);
+  const added = ['context: |', ...body.map((l) => `  ${l}`)];
+
+  // The block's own extent: `context: |` opens a block scalar, and `scanLines` already marks
+  // every line that belongs to it (`inScalar: true`) — that run, not "the rest of the file", is
+  // what `declareContextCatalog` wrote and what must be removed. This was a real bug: when
+  // `rules:` is appended AFTER `context:` (the normal onboarding order), the catalog is no
+  // longer the file's tail, and a tail-anchored check silently found nothing to remove.
+  let blockEnd = at.i + 1;
+  while (blockEnd < r.lines.length && r.lines[blockEnd].inScalar) blockEnd += 1;
+  const span = r.lines.slice(at.i, blockEnd).map((l) => l.raw);
+  if (span.length !== added.length || !span.every((line, k) => line === added[k])) {
+    return { action: 'unchanged', text: existingText };
+  }
+
+  const outLines = r.lines.map((l) => l.raw);
+  outLines.splice(at.i, blockEnd - at.i);
+  const text = outLines.join(r.eol) + (outLines[outLines.length - 1] === '' ? '' : r.eol);
+
+  const check = verifyOnlyRemoved(existingText, text, added, r.eol, at.i);
+  if (!check.ok) return { action: 'unchanged', text: existingText };
+  return { action: 'removed', text };
+}
+
+/**
+ * Remove exactly the artifact ids `declareArtifactRules` inserted or appended, leaving every id
+ * the user declared themselves untouched — the inverse of gap 5's insertion. Per id: the id's
+ * whole mapping value (its `  <id>:` line and every `    - rule` line under it) must equal, byte
+ * for byte, what `declareArtifactRules` would have rendered for that id, or it is left alone
+ * (the id is the user's, or was hand-edited since). If every id we recognise as ours is removed
+ * and no id is left in the block, the `rules:` key itself is removed too — that is only correct
+ * when the whole key was ours (the `appended` case at install time), so it is additionally
+ * gated on the key having contained NOTHING but our own ids.
+ * @param {string} existingText
+ * @param {Record<string, string[]>} rulesByArtifact
+ * @returns {{action: 'removed'|'unchanged', text: string, removedIds: string[]}}
+ */
+export function removeArtifactRules(existingText, rulesByArtifact) {
+  const r = inspectConfig(existingText);
+  if (!r.ok) return { action: 'unchanged', text: existingText, removedIds: [] };
+  const at = r.topLevelKeys.find((k) => k.key === 'rules');
+  if (!at) return { action: 'unchanged', text: existingText, removedIds: [] };
+
+  // Per-id ranges within the block, anchored to the block's own indentation exactly like
+  // `rulesBlock`, but this time capturing where each id's OWN mapping value starts and ends.
+  const ranges = []; // {id, start, end}
+  let blockIndent = null;
+  let blockEnd = r.lines.length;
+  let cur = null;
+  for (let i = at.i + 1; i < r.lines.length; i += 1) {
+    const l = r.lines[i];
+    if (l.inScalar) continue;
+    const t = l.raw.trim();
+    if (t === '' || t.startsWith('#')) continue;
+    if (!/^\s/.test(l.raw)) { blockEnd = i; break; }
+    const indent = indentOf(l.raw);
+    if (blockIndent === null) blockIndent = indent;
+    if (indent < blockIndent) { blockEnd = i; break; }
+    if (indent === blockIndent) {
+      const m = /^([A-Za-z_][A-Za-z0-9_.-]*)\s*:(\s|$)/.exec(t);
+      if (m) {
+        if (cur) cur.end = i;
+        cur = { id: m[1], start: i, end: r.lines.length };
+        ranges.push(cur);
+      }
+    }
+  }
+  if (cur) cur.end = blockEnd;
+
+  const idsPresent = new Set(ranges.map((rg) => rg.id));
+  const removable = [];
+  for (const [id, rules] of Object.entries(rulesByArtifact)) {
+    if (!idsPresent.has(id)) continue;
+    const rg = ranges.find((x) => x.id === id);
+    const expected = [`  ${id}:`, ...rules.map((rule) => `    - ${yamlScalar(rule)}`)];
+    const actual = [];
+    for (let i = rg.start; i < rg.end; i += 1) {
+      if (r.lines[i].inScalar) { actual.push(r.lines[i].raw); continue; }
+      const t = r.lines[i].raw.trim();
+      if (t === '' || t.startsWith('#')) continue;
+      actual.push(r.lines[i].raw);
+    }
+    if (actual.length === expected.length && actual.every((line, k) => line === expected[k])) {
+      removable.push({ id, start: rg.start, end: rg.end, lines: expected });
+    }
+  }
+  if (removable.length === 0) return { action: 'unchanged', text: existingText, removedIds: [] };
+
+  // Whole-key removal only when EVERY id in the block is one we are removing.
+  const wholeKey = removable.length === ranges.length;
+
+  const outLines = r.lines.map((l) => l.raw);
+  let removedFlat = [];
+  // Splice from the end so earlier indices stay valid.
+  for (const rg of [...removable].sort((a, b) => b.start - a.start)) {
+    outLines.splice(rg.start, rg.end - rg.start);
+  }
+  removedFlat = removable.flatMap((rg) => rg.lines);
+  let atIndexForCheck = removable[0].start;
+  if (wholeKey) {
+    outLines.splice(at.i, 1); // the `rules:` line itself
+    removedFlat = ['rules:', ...removedFlat];
+    atIndexForCheck = at.i;
+  }
+  const text = outLines.length ? outLines.join(r.eol) + (outLines[outLines.length - 1] === '' ? '' : r.eol) : '';
+
+  const check = verifyOnlyRemoved(existingText, text, removedFlat, r.eol, atIndexForCheck);
+  if (!check.ok) return { action: 'unchanged', text: existingText, removedIds: [] };
+  return { action: 'removed', text, removedIds: removable.map((rg) => rg.id) };
 }

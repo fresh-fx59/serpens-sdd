@@ -1,5 +1,7 @@
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, realpathSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { join, resolve } from 'node:path';
+import { LAYOUT, SERPENS_DIR } from '../layout.mjs';
 import { validateConfig } from '../config.mjs';
 import { resolveInputs } from '../resolve.mjs';
 import { ask } from '../prompts.mjs';
@@ -11,7 +13,7 @@ import { unansweredCount } from '../testingstack.mjs';
 import { kitPath } from '../integrity.mjs';
 import { stage0 } from '../stages/stage0-prereqs.mjs';
 import { stage1 } from '../stages/stage1-inventory.mjs';
-import { stage3 } from '../stages/stage3-store.mjs';
+import { stage3, seedRepoFacts } from '../stages/stage3-store.mjs';
 import { stage4 } from '../stages/stage4-submodules.mjs';
 import { stage5 } from '../stages/stage5-onboard.mjs';
 import { installCommands } from '../stages/stage6-install.mjs';
@@ -38,6 +40,30 @@ const ALL_STAGES = [
   { id: 9, name: 'accept', fn: stage9 },
 ];
 
+// Repo-local topology (step 6, gap 3 — spec-openspec-coexistence-2026-09-22.md): ONE repository,
+// no sibling store. Stage 3 becomes `seedRepoFacts` (branching.md + port-facts.md into the repo's
+// own serpens/, only when absent); stage 1 (inventory) and stage 4 (submodules — the only stage
+// that commits and pushes) do not exist at all, so no outward write can happen; the store
+// registration step lives inside stage 3 and so is gone with it. Stages 5, 6 and 9 branch on
+// `ctx.topology` internally; 0 and 8 are topology-blind (8 only ever touches throwaway fixtures).
+const REPO_LOCAL_STAGES = [
+  { id: 0, name: 'prereqs', fn: stage0 },
+  { id: 3, name: 'facts', fn: seedRepoFacts },
+  { id: 5, name: 'onboard', fn: stage5 },
+  { id: 6, name: 'install', fn: installCommands },
+  { id: 8, name: 'guards', fn: stage8 },
+  { id: 9, name: 'accept', fn: stage9 },
+];
+
+/**
+ * The stage list for a topology. `--only` validates against THIS list, so `--only 4` on a
+ * repo-local install is refused as an unknown stage rather than silently selecting nothing.
+ * @param {string} topology
+ */
+export function stagesFor(topology) {
+  return topology === 'repo-local' ? REPO_LOCAL_STAGES : ALL_STAGES;
+}
+
 function readFlagValue(argv, flag) {
   const idx = argv.indexOf(flag);
   if (idx !== -1) {
@@ -60,10 +86,10 @@ function readFlagValue(argv, flag) {
  * @param {string[]} argv
  * @returns {{ids: number[]|null, error?: string}}
  */
-function parseOnly(argv) {
+function parseOnly(argv, allStages = ALL_STAGES) {
   const raw = readFlagValue(argv, '--only');
   if (raw === undefined) return { ids: null };
-  const validIds = new Set(ALL_STAGES.map((s) => s.id));
+  const validIds = new Set(allStages.map((s) => s.id));
   const tokens = raw.split(',').map((s) => s.trim());
   const bad = [];
   const ids = [];
@@ -81,10 +107,10 @@ function parseOnly(argv) {
   return { ids };
 }
 
-function selectStages(onlyIds) {
-  if (!onlyIds) return ALL_STAGES;
+function selectStages(onlyIds, allStages = ALL_STAGES) {
+  if (!onlyIds) return allStages;
   const wanted = new Set(onlyIds);
-  return ALL_STAGES.filter((s) => wanted.has(s.id));
+  return allStages.filter((s) => wanted.has(s.id));
 }
 
 /**
@@ -145,9 +171,9 @@ function makeBufferedLog() {
   };
 }
 
-function logPathFor(storeRoot) {
+function logPathFor(logDir) {
   const stamp = new Date().toISOString().replace(/[:.]/g, '-');
-  return join(storeRoot, `.serpens-sdd-init-${stamp}.log`);
+  return join(logDir, `.serpens-sdd-init-${stamp}.log`);
 }
 
 /**
@@ -157,7 +183,9 @@ function logPathFor(storeRoot) {
  * @param {{storeRoot: string, port: object|null, config: object}} ctx
  * @returns {string}
  */
-function buildRefusalChecklist({ storeRoot, port, config }) {
+function buildRefusalChecklist({
+  storeRoot, factsRoot = storeRoot, testingStackTargets: targetsIn, port, config, lefthookManual = [],
+}) {
   const lines = [];
   lines.push('');
   lines.push('Refusal checklist — serpens-sdd cannot prove these; verify by hand before relying on this install:');
@@ -172,7 +200,7 @@ function buildRefusalChecklist({ storeRoot, port, config }) {
     }`,
   );
 
-  const portFactsPath = join(storeRoot, 'port-facts.md');
+  const portFactsPath = join(factsRoot, LAYOUT.portFacts);
   const portFactsUnfilled = existsSync(portFactsPath) ? unfilledCount(readFileSync(portFactsPath, 'utf8')) : null;
   lines.push(
     `2. ${portFactsPath}: ${
@@ -180,15 +208,15 @@ function buildRefusalChecklist({ storeRoot, port, config }) {
     } — fill every UNFILLED section by hand (tracker, forge, MCP tool names).`,
   );
 
-  // docs/testing-stack.md lives in each ONBOARDED repository (spec §5 step 6a), never in the
+  // The testing-stack facts live in each ONBOARDED repository (spec §5 step 6a), never in the
   // directory the CLI was invoked from, so the checklist reports one line per repository that
   // actually has one on disk.
-  const testingStackTargets = callSiteRoots(storeRoot).filter((root) => root !== storeRoot);
+  const testingStackTargets = targetsIn ?? callSiteRoots(storeRoot).filter((root) => root !== storeRoot);
   if (testingStackTargets.length === 0) {
-    lines.push('3. docs/testing-stack.md: no onboarded repository on disk yet — nothing to fill in.');
+    lines.push(`3. ${LAYOUT.testingStack}: no onboarded repository on disk yet — nothing to fill in.`);
   } else {
     const parts = testingStackTargets.map((root) => {
-      const path = join(root, 'docs', 'testing-stack.md');
+      const path = join(root, LAYOUT.testingStack);
       const count = existsSync(path) ? unansweredCount(readFileSync(path, 'utf8')) : null;
       return `${path}: ${count === null ? 'not found' : `${count} unanswered fact(s)`}`;
     });
@@ -217,6 +245,14 @@ function buildRefusalChecklist({ storeRoot, port, config }) {
     + 'openspec/changes/<id>/proposal.md, then delete the branch and the change folder.',
   );
 
+  if (lefthookManual.length > 0) {
+    lines.push(
+      `7. lefthook: 'manual' for ${lefthookManual.map((r) => r.name).join(', ')} — a team lefthook `
+      + 'config already existed there. Ours was written to serpens/lefthook.yml; add `extends:` '
+      + '`  - serpens/lefthook.yml` to the team config by hand, then run `lefthook install` yourself.',
+    );
+  }
+
   return lines.join('\n');
 }
 
@@ -244,7 +280,7 @@ export default async function main(argv) {
     // configTemplate is the single source of truth: plain JSON, the same shape --config reads
     // back in, and it round-trips through validateConfig with zero errors (see
     // test/config-template.test.mjs).
-    process.stdout.write(configTemplate(lang));
+    process.stdout.write(configTemplate(lang, { topology: readFlagValue(argv, '--topology') ?? 'store' }));
     return 0;
   }
 
@@ -262,9 +298,11 @@ export default async function main(argv) {
 
   // Validated before anything else touches disk: an empty or unknown --only must never fall
   // through to "select zero stages, run zero iterations, print the green banner".
-  const onlyResult = parseOnly(argv);
-  if (onlyResult.error) {
-    process.stderr.write(`✗ ${onlyResult.error}\n`);
+  // Checked once against the union of both topologies' ids here (so a bad value never reaches
+  // config resolution), and again below against the resolved topology's own stage list.
+  const earlyOnly = parseOnly(argv, [...ALL_STAGES, ...REPO_LOCAL_STAGES]);
+  if (earlyOnly.error) {
+    process.stderr.write(`✗ ${earlyOnly.error}\n`);
     return 2;
   }
 
@@ -298,9 +336,13 @@ export default async function main(argv) {
   const merged = {
     ...fileConfig,
     ...resolved.value,
-    repositories: Array.isArray(fileConfig.repositories) ? fileConfig.repositories : [],
     facts: fileConfig.facts && typeof fileConfig.facts === 'object' ? fileConfig.facts : {},
   };
+  // `repositories` is store-topology input; in repo-local it must stay ABSENT unless the file
+  // really set it (validateConfig then refuses it, rather than this default hiding it).
+  if (resolved.value.topology !== 'repo-local') {
+    merged.repositories = Array.isArray(fileConfig.repositories) ? fileConfig.repositories : [];
+  }
 
   const validated = validateConfig(merged, {
     checkoutRoot: process.cwd(),
@@ -322,10 +364,43 @@ export default async function main(argv) {
     }
   }
 
-  // The directory `init` was invoked from. It is NOT an install target: project-scope installs
-  // go to the store and every onboarded submodule (spec §5.4), which is what stage 6 resolves.
-  const repoRoot = process.cwd();
-  const storeRoot = resolve(config.store.root);
+  const topology = config.topology ?? 'store';
+  const repoLocal = topology === 'repo-local';
+  const onlyResult = parseOnly(argv, stagesFor(topology));
+  if (onlyResult.error) {
+    process.stderr.write(`✗ ${onlyResult.error}\n`);
+    return 2;
+  }
+
+  // Store topology: the directory `init` was invoked from is NOT an install target —
+  // project-scope installs go to the store and every onboarded submodule (spec §5.4), which is
+  // what stage 6 resolves. Repo-local: `repo.root` IS the one install target, and it must be its
+  // own git top-level (a subdirectory would put serpens/ and the hooks in the wrong place).
+  let repoRoot = process.cwd();
+  let storeRoot;
+  if (repoLocal) {
+    repoRoot = resolve(config.repo.root);
+    let top;
+    try {
+      top = execFileSync('git', ['-C', repoRoot, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+    } catch (err) {
+      process.stderr.write(`✗ repo.root ${repoRoot} is not inside a git repository: ${String(err.stderr || err.message).trim()}\n`);
+      return 2;
+    }
+    const real = (p) => { try { return realpathSync(p); } catch { return resolve(p); } };
+    if (real(top) !== real(repoRoot)) {
+      process.stderr.write(`✗ repo.root ${repoRoot} is not its own git top-level (the repository root is ${top}) — point repo.root at ${top}\n`);
+      return 2;
+    }
+  } else {
+    storeRoot = resolve(config.store.root);
+  }
+  // Every reader of LAYOUT.branching / LAYOUT.portFacts: the store in store mode, the one
+  // repository in repo-local.
+  const factsRoot = repoLocal ? repoRoot : storeRoot;
+  // Where the run log lives: the store root, or the repo's own serpens/ (ignored by
+  // serpens/.gitignore, which seedRepoFacts writes) — never the team's root.
+  const logDir = repoLocal ? join(repoRoot, SERPENS_DIR) : storeRoot;
 
   // The log stays buffered (nothing written to disk) until SOME stage has actually succeeded —
   // never attached up front, even when storeRoot already exists from an earlier run, so a
@@ -334,22 +409,25 @@ export default async function main(argv) {
   const log = makeBufferedLog();
 
   const ctx = {
-    config, port, run: defaultRun, log, dryRun, offline, repoRoot, storeRoot, kitDir: kitPath(config?.lang ?? 'en'),
+    config, port, run: defaultRun, log, dryRun, offline, repoRoot, storeRoot, factsRoot, topology,
+    kitDir: kitPath(config?.lang ?? 'en'),
     // The config FILE this run was given, so that adopting a store's committed id can persist
     // the change instead of reverting on the next run (src/storeregistry.mjs). Undefined when
     // `init` was run without `--config`: there is then no file to persist to.
     ...(configPath ? { configPath: resolve(configPath) } : {}),
   };
 
-  const stages = selectStages(onlyResult.ids);
+  const stages = selectStages(onlyResult.ids, stagesFor(topology));
+  let lefthookManual = [];
 
-  log.line(`serpens-sdd init starting — project=${config.project} store=${storeRoot} port=${config.port ?? '(none)'} dryRun=${dryRun}`);
+  log.line(`serpens-sdd init starting — project=${config.project} topology=${topology} ${repoLocal ? `repo=${repoRoot}` : `store=${storeRoot}`} port=${config.port ?? '(none)'} dryRun=${dryRun}`);
 
   for (const stage of stages) {
     log.line(`=== stage ${stage.id} (${stage.name}) starting ===`);
     let result;
     try {
       result = await stage.fn(ctx);
+      if (stage.id === 5 && Array.isArray(result.lefthookManual)) lefthookManual = result.lefthookManual;
     } catch (err) {
       log.line(`=== stage ${stage.id} (${stage.name}) THREW: ${err.message} ===`);
       log.dumpToStderr();
@@ -370,8 +448,8 @@ export default async function main(argv) {
     // store directory exists — normally stage 3 (which creates it), but also covers a re-run
     // or a `--only` subset that starts later against a store already on disk. Never attach
     // before that: a stage 0 failure (e.g. an unsupported OpenSpec version) must write nothing.
-    if (!dryRun && result.ok && !log.attached && existsSync(storeRoot)) {
-      log.attach(logPathFor(storeRoot));
+    if (!dryRun && result.ok && !log.attached && existsSync(logDir)) {
+      log.attach(logPathFor(logDir));
     }
 
     if (!result.ok) {
@@ -392,7 +470,7 @@ export default async function main(argv) {
       log.line('--offline: skipped on a dry run (no call site was written to assert against)');
       process.stdout.write('--offline: skipped on a dry run (no call site was written to assert against)\n');
     } else {
-      const routes = assertOfflineRoutes({ roots: callSiteRoots(storeRoot) });
+      const routes = assertOfflineRoutes({ roots: repoLocal ? callSiteRoots(repoRoot, { repoLocal }) : callSiteRoots(storeRoot) });
       for (const e of routes.evidence) log.line(e);
       if (!routes.ok) {
         log.line('=== --offline assertion FAILED ===');
@@ -412,6 +490,9 @@ export default async function main(argv) {
   log.close();
 
   process.stdout.write('✓ serpens-sdd init completed green\n');
-  process.stdout.write(`${buildRefusalChecklist({ storeRoot, port, config })}\n`);
+  process.stdout.write(`${buildRefusalChecklist({
+    storeRoot, factsRoot, port, config, lefthookManual,
+    ...(repoLocal ? { testingStackTargets: [repoRoot] } : {}),
+  })}\n`);
   return 0;
 }

@@ -85,7 +85,8 @@ for (const line of lines) {
   if (/^[A-Za-z0-9_-]+:\\s*$/.test(line)) { inBlock = line.trim() === hook + ':'; continue; }
   if (inBlock) {
     const m = /^\\s*run:\\s*(.+)$/.exec(line);
-    if (m) cmds.push(m[1]);
+    // YAML single-quoted scalar (what renderLefthook emits): strip the quotes, undouble ''.
+    if (m) cmds.push(/^'.*'$/.test(m[1]) ? m[1].slice(1, -1).replaceAll("''", "'") : m[1]);
   }
 }
 let failed = false;
@@ -221,7 +222,7 @@ async function runInitCapturingStdout(fixture, extraArgv = [], envOverrides = {}
 }
 
 /** Replace every `UNFILLED — …` line in a file, the operator's own follow-up step (spec §12). */
-// A team filling in `docs/testing-stack.md` completely: every `UNFILLED` line, every slot, and
+// A team filling in `serpens/testing-stack.md` completely: every `UNFILLED` line, every slot, and
 // the template's own `...` placeholder rows. Shared with the other suites (and self-checked
 // against the schema) in test/helpers/testing-stack.mjs.
 const fillUnfilled = fillTestingStack;
@@ -231,14 +232,14 @@ test('a full init against bare remotes ends green', async () => {
   const code = await runInit(fixture);
   assert.equal(code, 0);
 
-  assert.ok(existsSync(join(fixture.storeRoot, 'port-facts.md')));
+  assert.ok(existsSync(join(fixture.storeRoot, 'serpens', 'port-facts.md')));
   // Project scope (claude) installs into the STORE — spec §5.4 — never into the directory the
   // CLI was invoked from.
   assert.ok(existsSync(join(fixture.storeRoot, '.claude', 'commands', 'spns', 'spec.md')));
   assert.ok(existsSync(join(fixture.storeRoot, '.claude', 'skills', 'spns-tdd', 'SKILL.md')));
   assert.equal(existsSync(join(fixture.repoRoot, '.claude')), false,
     'the CLI working directory must never be an install target');
-  assert.equal(existsSync(join(fixture.repoRoot, 'docs', 'testing-stack.md')), false,
+  assert.equal(existsSync(join(fixture.repoRoot, 'serpens', 'testing-stack.md')), false,
     'testing-stack.md belongs to each onboarded repository, not to the cwd');
 
   const logs = readdirSync(fixture.storeRoot).filter((f) => /^\.serpens-sdd-init-.*\.log$/.test(f));
@@ -393,13 +394,13 @@ test('a second run is a no-op', async () => {
   assert.equal(first, 0, 'first run must be green');
   assert.ok(existsSync(join(fixture.storeRoot, 'submodules', 'svc-a', 'README.md')), 'svc-a must be a real, materialized submodule');
 
-  // Stage 6 leaves `svc-a/docs/testing-stack.md` carrying a literal UNFILLED marker, and per
+  // Stage 6 leaves `svc-a/serpens/testing-stack.md` carrying a literal UNFILLED marker, and per
   // spec §9 an install "cannot be closed on unfilled facts" — the spoke's own verify-docs gate
   // (run by stage 5) refuses while it remains. So the operator's §12 follow-up happens here,
   // exactly once, and the re-run below is then measured on a genuinely green install: it must
   // add nothing of its own. (The store's `port-facts.md` is deliberately left as stage 6
   // renders it: stage 6 owns that file and rewrites it from what each run proved.)
-  fillUnfilled(join(fixture.storeRoot, 'submodules', 'svc-a', 'docs', 'testing-stack.md'));
+  fillUnfilled(join(fixture.storeRoot, 'submodules', 'svc-a', 'serpens', 'testing-stack.md'));
 
   const beforeHash = hashTree(fixture.storeRoot);
   const beforeStatus = porcelainStatus(fixture.storeRoot);
@@ -486,17 +487,17 @@ test('lefthook pre-commit is green with the registry unreachable, in a repo with
   assert.ok(existsSync(join(repoRoot, 'lefthook.yml')));
 
   // This test drives stage 5 alone, but a real pre-commit only ever runs in a repository stage 6
-  // also finished — and stage 6 is what writes `docs/testing-stack.md`, whose absence in an
+  // also finished — and stage 6 is what writes `serpens/testing-stack.md`, whose absence in an
   // onboarded repository verify-docs now (correctly) refuses. Stand stage 6 in, filled, so the
   // subject of THIS test stays what it says on the tin: the pre-commit path never touching the
   // npm registry.
   mkdirSync(join(repoRoot, 'docs'), { recursive: true });
   writeFileSync(
-    join(repoRoot, 'docs', 'testing-stack.md'),
+    join(repoRoot, 'serpens', 'testing-stack.md'),
     renderTestingStack(readFileSync(join(KIT_DIR, 'templates', 'testing-stack.md'), 'utf8')),
     'utf8',
   );
-  fillTestingStack(join(repoRoot, 'docs', 'testing-stack.md'));
+  fillTestingStack(join(repoRoot, 'serpens', 'testing-stack.md'));
 
   // Stage everything onboarding wrote — a real pre-commit hook runs against staged content, and
   // verify-docs' own index check (fix round 3) now requires the index to be tracked, not merely
@@ -647,14 +648,14 @@ test('a missing required input without a TTY is exit 2 naming the flag', async (
   assert.match(captured, /--project/);
 });
 
-test('an onboarded spoke gets its own docs/testing-stack.md, and its UNFILLED marker gates that spoke verify-docs run until it is filled', async () => {
+test('an onboarded spoke gets its own serpens/testing-stack.md, and its UNFILLED marker gates that spoke verify-docs run until it is filled', async () => {
   const fixture = makeFixture({ repositories: ['svc-a'] });
   const code = await runInit(fixture);
   assert.equal(code, 0);
 
   const spoke = join(fixture.storeRoot, 'submodules', 'svc-a');
-  const testingStack = join(spoke, 'docs', 'testing-stack.md');
-  assert.ok(existsSync(testingStack), 'the spoke must receive its own docs/testing-stack.md');
+  const testingStack = join(spoke, 'serpens', 'testing-stack.md');
+  assert.ok(existsSync(testingStack), 'the spoke must receive its own serpens/testing-stack.md');
   assert.match(readFileSync(testingStack, 'utf8'), /^UNFILLED — /m);
 
   // Stage (never commit — onboardOne itself never does either) everything onboarding wrote, so
@@ -682,11 +683,11 @@ test('--offline is green when every generated call site has route 1, and exit 3 
   const { code, printed } = await runInitCapturingStdout(fixture, ['--offline']);
   assert.equal(code, 0, 'a store carrying the generated shim satisfies --offline');
   assert.match(printed, /--offline: route 1 or 2 present/);
-  assert.ok(existsSync(join(fixture.storeRoot, 'tools', 'serpens-sdd')));
+  assert.ok(existsSync(join(fixture.storeRoot, 'serpens', 'bin', 'serpens-sdd')));
 
   // Now take the offline route away from that one call site (nothing else touched) and assert
   // the flag actually fails the install instead of handing CI a false assurance.
-  unlinkSync(join(fixture.storeRoot, 'tools', 'serpens-sdd'));
+  unlinkSync(join(fixture.storeRoot, 'serpens', 'bin', 'serpens-sdd'));
   const savedWrite = process.stderr.write.bind(process.stderr);
   let captured = '';
   process.stderr.write = (chunk) => { captured += chunk; return true; };
@@ -698,7 +699,7 @@ test('--offline is green when every generated call site has route 1, and exit 3 
   }
   assert.equal(failing, 3, '--offline with no route 1 or 2 must be exit 3 (missing precondition)');
   assert.match(captured, /--offline/);
-  assert.match(captured, /tools\/serpens-sdd/);
+  assert.match(captured, /serpens\/bin\/serpens-sdd/);
 });
 
 test('--dry-run prints the plan for every stage — the commands and the file writes — while still touching nothing', async () => {
@@ -715,8 +716,8 @@ test('--dry-run prints the plan for every stage — the commands and the file wr
   assert.match(printed, /\$ lefthook version/);
   // stage 3: the remote probe that decides the case, and the files it would write
   assert.match(printed, /\$ git ls-remote --heads/);
-  assert.match(printed, new RegExp(`\\$ cp .*templates/adr\\.md ${fixture.storeRoot}/templates/adr\\.md`));
-  assert.match(printed, new RegExp(`\\$ write ${fixture.storeRoot}/tools/serpens-sdd`));
+  assert.match(printed, new RegExp(`\\$ cp .*templates/adr\\.md ${fixture.storeRoot}/serpens/templates/adr\\.md`));
+  assert.match(printed, new RegExp(`\\$ write ${fixture.storeRoot}/serpens/bin/serpens-sdd`));
   // stage 4/9: the resolved sync-submodules invocation, never a bare label — it feeds stage 1's
   // resolved rows on stdin (project-repositories.json is no longer written or referenced).
   assert.match(printed, /sync-submodules\.sh --repos-from -/);
@@ -725,4 +726,171 @@ test('--dry-run prints the plan for every stage — the commands and the file wr
   assert.match(printed, /\$ write <agent-root>\/skills\/spns-tdd\/SKILL\.md/);
   // stage 8: every guard it would prove, from the GUARDS list itself
   assert.match(printed, /guard: a deliberate bad commit rejected by the installed hook/);
+});
+
+// ---------------------------------------------------------------------------------------------
+// Step 6 (gap 3, spec-openspec-coexistence-2026-09-22.md): repo-local topology. ONE repository
+// that already runs vanilla OpenSpec by hand and has its own lefthook.yml; init with no store,
+// no submodule, no push. The vanilla work must keep committing cleanly through the hooks; a
+// marked (Serpens) change must be gated.
+
+const VANILLA_CHANGE = 'add-vanilla-thing';
+
+function makeRepoLocalFixture() {
+  const root = mkdtempSync(join(tmpdir(), 'serpens-sdd-e2e-repolocal-'));
+  const repoRoot = join(root, 'trial');
+  initGitRepo(repoRoot);
+  // A team that already runs vanilla OpenSpec: its own root, one hand-made change, its own
+  // lefthook config and its own CLAUDE.md.
+  for (const d of ['openspec/specs', 'openspec/changes/archive', `openspec/changes/${VANILLA_CHANGE}/specs/thing`]) {
+    mkdirSync(join(repoRoot, d), { recursive: true });
+  }
+  writeFileSync(join(repoRoot, 'openspec', 'config.yaml'), 'schema: spec-driven\n');
+  writeFileSync(join(repoRoot, 'openspec', 'specs', '.gitkeep'), '');
+  writeFileSync(join(repoRoot, 'openspec', 'changes', 'archive', '.gitkeep'), '');
+  writeFileSync(join(repoRoot, 'openspec', 'changes', VANILLA_CHANGE, '.openspec.yaml'), 'schema: spec-driven\ncreated: 2026-09-23\n');
+  writeFileSync(join(repoRoot, 'openspec', 'changes', VANILLA_CHANGE, 'proposal.md'), '# vanilla\nhand-written, no Why section at all\n');
+  writeFileSync(join(repoRoot, 'lefthook.yml'), '# the team\'s own hooks\npre-commit:\n  commands:\n    team-lint:\n      run: "true"\n');
+  writeFileSync(join(repoRoot, 'CLAUDE.md'), '# Team rules\n\nOur own text.\n');
+  git(repoRoot, ['add', '-A']);
+  git(repoRoot, ['commit', '-q', '-m', 'vanilla openspec repo']);
+
+  const oss = fakeOpenspec(root, { version: '1.13.0' });
+  const lefthookBin = noopLefthook(root);
+  // The config file lives OUTSIDE the trial repo — it is not a file the team would commit.
+  const configPath = join(root, 'serpens-sdd.json');
+  writeFileSync(configPath, JSON.stringify({
+    schema_version: 1,
+    topology: 'repo-local',
+    project: 'trial',
+    lang: 'en',
+    port: 'claude',
+    openspec: { invocation: 'openspec' },
+    repo: { root: '.', name: 'trial', base_branch: BASE },
+    facts: { repository_source: 'manual' },
+  }, null, 2), 'utf8');
+  return { root, repoRoot, storeRoot: join(root, 'no-store-here'), configPath, oss, lefthookBin };
+}
+
+/** Install plain git hooks that run exactly what our generated serpens/lefthook.yml runs — the
+ * team owns lefthook.yml here, so ours is `serpens/lefthook.yml` and would be `extends:`-ed by
+ * hand; this stands in for that without a real lefthook binary (none is installable offline). */
+function installOurHooks(repoRoot) {
+  const shim = join(repoRoot, 'serpens', 'bin', 'serpens-sdd');
+  const hooks = join(repoRoot, '.git', 'hooks');
+  writeFileSync(join(hooks, 'pre-commit'), `#!/bin/sh\n"${shim}" verify-docs --staged-scope || exit 1\n"${shim}" git-naming --branch || exit 1\n`);
+  writeFileSync(join(hooks, 'commit-msg'), `#!/bin/sh\nexec "${shim}" git-naming --commit-msg "$1"\n`);
+  chmodSync(join(hooks, 'pre-commit'), 0o755);
+  chmodSync(join(hooks, 'commit-msg'), 0o755);
+}
+
+function tryCommit(repoRoot, message) {
+  try {
+    execFileSync('git', ['commit', '-q', '-m', message], { cwd: repoRoot, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
+    return { code: 0, output: '' };
+  } catch (err) {
+    return { code: err.status ?? 1, output: `${err.stdout ?? ''}${err.stderr ?? ''}` };
+  }
+}
+
+test('repo-local init: no store, no submodule, no push; facts land in the repo; team files untouched; vanilla commits pass the hooks and a marked change is gated', async () => {
+  const fixture = makeRepoLocalFixture();
+  const { repoRoot } = fixture;
+  const teamFiles = ['lefthook.yml', `openspec/changes/${VANILLA_CHANGE}/proposal.md`,
+    `openspec/changes/${VANILLA_CHANGE}/.openspec.yaml`, 'openspec/specs/.gitkeep'];
+  const before = Object.fromEntries(teamFiles.map((f) => [f, readFileSync(join(repoRoot, f))]));
+
+  const { code, printed } = await runInitCapturingStdout(fixture);
+  assert.equal(code, 0, printed);
+
+  // No store, anywhere.
+  assert.equal(existsSync(fixture.storeRoot), false);
+  assert.equal(existsSync(join(repoRoot, '.gitmodules')), false);
+  assert.equal(existsSync(join(repoRoot, 'submodules')), false);
+  assert.equal(git(repoRoot, ['remote']).trim(), '', 'no remote was added');
+
+  // The run log lives in serpens/ and is ignored there; it proves no outward write was run.
+  const logs = readdirSync(join(repoRoot, 'serpens')).filter((f) => /^\.serpens-sdd-init-.*\.log$/.test(f));
+  assert.equal(logs.length, 1);
+  const logText = readFileSync(join(repoRoot, 'serpens', logs[0]), 'utf8');
+  assert.doesNotMatch(logText, /\$ git push/);
+  assert.doesNotMatch(logText, /\$ git (-C \S+ )?submodule/);
+  assert.doesNotMatch(logText, /\$ openspec store/);
+  // Stage 8's own throwaway-fixture commit (in a temp dir, "bad ticket") is the only commit allowed.
+  const commits = logText.split('\n').filter((l) => /\$ git (-C \S+ )?commit\b/.test(l) && !l.includes('(bad ticket'));
+  assert.deepEqual(commits, [], 'init must never commit in repo-local');
+  assert.doesNotMatch(logText, /stage 1 \(|stage 4 \(/);
+  assert.equal(git(repoRoot, ['check-ignore', `serpens/${logs[0]}`]).trim(), `serpens/${logs[0]}`);
+
+  for (const f of ['serpens/branching.md', 'serpens/port-facts.md', 'serpens/testing-stack.md', 'serpens/topology', 'serpens/bin/serpens-sdd', 'serpens/lefthook.yml']) {
+    assert.ok(existsSync(join(repoRoot, f)), `${f} must exist`);
+  }
+  assert.equal(readFileSync(join(repoRoot, 'serpens', 'topology'), 'utf8'), 'repo-local\n');
+  assert.equal(git(repoRoot, ['config', 'serpens.baseBranch']).trim(), BASE);
+  assert.doesNotMatch(readFileSync(join(repoRoot, 'openspec', 'config.yaml'), 'utf8'), /^references:/m,
+    'no store to declare in repo-local');
+  assert.ok(existsSync(join(repoRoot, '.claude', 'commands', 'spns', 'spec.md')), 'claude = project scope → the repo itself');
+  for (const f of teamFiles) assert.deepEqual(readFileSync(join(repoRoot, f)), before[f], `${f} must be byte-identical`);
+  assert.match(readFileSync(join(repoRoot, 'CLAUDE.md'), 'utf8'), /^# Team rules\n\nOur own text.\n/);
+
+  // The human's follow-up: fill the facts, commit the install on a conforming branch — through
+  // the hooks, which must accept correct Serpens work.
+  installOurHooks(repoRoot);
+  git(repoRoot, ['checkout', '-q', '-b', 'feature/ABCD-1']);
+  fillUnfilled(join(repoRoot, 'serpens', 'testing-stack.md'));
+  const pf = join(repoRoot, 'serpens', 'port-facts.md');
+  writeFileSync(pf, readFileSync(pf, 'utf8').replace(/^UNFILLED — .*$/gm, 'answered by the operator'));
+  git(repoRoot, ['add', '-A']);
+  const installCommit = tryCommit(repoRoot, 'feat(ABCD-1): onboard serpens-sdd repo-local');
+  assert.equal(installCommit.code, 0, installCommit.output);
+
+  // Vanilla work: a non-conforming branch AND message, unmarked change — must pass.
+  git(repoRoot, ['checkout', '-q', '-b', 'wip/not-a-ticket']);
+  writeFileSync(join(repoRoot, 'openspec', 'changes', VANILLA_CHANGE, 'tasks.md'), '- [ ] do the thing\n');
+  git(repoRoot, ['add', '-A']);
+  const vanilla = tryCommit(repoRoot, 'random words');
+  assert.equal(vanilla.code, 0, `a vanilla commit must pass our hooks:\n${vanilla.output}`);
+
+  // The SAME change, marked as Serpens' — same branch, same kind of message: gated.
+  writeFileSync(join(repoRoot, 'openspec', 'changes', VANILLA_CHANGE, '.serpens.yaml'),
+    '# serpens-sdd:change-marker\nowner: serpens-sdd\nticket: ABCD-2\nbranch: feature/ABCD-2\ncreated: 2026-09-23\n');
+  git(repoRoot, ['add', '-A']);
+  const marked = tryCommit(repoRoot, 'random words again');
+  assert.notEqual(marked.code, 0, 'a marked change on a bad branch must be refused');
+  assert.match(marked.output, /✗/, marked.output);
+  assert.equal(git(repoRoot, ['log', '-1', '--format=%s']).trim(), 'random words', 'the refused commit did not land');
+});
+
+test('repo-local --dry-run lists exactly stages 0,3,5,6,8,9 and touches nothing', async () => {
+  const fixture = makeRepoLocalFixture();
+  const snap = snapshotDir(fixture.repoRoot);
+  const { code, printed } = await runInitCapturingStdout(fixture, ['--dry-run']);
+  assert.equal(code, 0);
+  const ids = [...printed.matchAll(/=== stage (\d+) \(/g)].map((m) => Number(m[1]));
+  assert.deepEqual(ids, [0, 3, 5, 6, 8, 9]);
+  assert.doesNotMatch(printed, /git push|submodule add|ls-remote|openspec store|git clone/);
+  assert.match(printed, /serpens\/branching\.md\s+# only when absent/);
+  assert.deepEqual(snapshotDir(fixture.repoRoot), snap, 'dry-run must not change a byte');
+});
+
+test('repo-local: --only 4 is refused (no such stage), and a store: key is a config error', async () => {
+  const fixture = makeRepoLocalFixture();
+  const savedWrite = process.stderr.write.bind(process.stderr);
+  let captured = '';
+  process.stderr.write = (chunk) => { captured += chunk; return true; };
+  let only4;
+  let withStore;
+  try {
+    only4 = await runInit(fixture, ['--only', '4']);
+    const cfg = JSON.parse(readFileSync(fixture.configPath, 'utf8'));
+    cfg.store = { remote: 'x', base_branch: 'main', root: '../s' };
+    writeFileSync(fixture.configPath, JSON.stringify(cfg));
+    withStore = await runInit(fixture);
+  } finally {
+    process.stderr.write = savedWrite;
+  }
+  assert.equal(only4, 2);
+  assert.equal(withStore, 2);
+  assert.match(captured, /store: is not allowed with topology repo-local/);
+  assert.equal(existsSync(join(fixture.repoRoot, 'serpens')), false, 'nothing written on either refusal');
 });

@@ -4,12 +4,19 @@ import { readFileSync } from 'node:fs';
 import { buildHelp } from '../src/cli/help.mjs';
 import helpMain from '../src/cli/help.mjs';
 
-test('help names all seven workflow commands and all eleven tool commands', () => {
+test('help names all seven workflow commands and all thirteen tool commands', () => {
   const h = buildHelp({ port: 'gigacode', scope: 'user', lang: 'en', edition: '2026-08-26.8' });
   assert.equal(h.workflow.length, 7);
-  assert.equal(h.commands.length, 11);
+  assert.equal(h.commands.length, 13);
   assert.equal(h.install.port, 'gigacode');
   for (const c of [...h.workflow, ...h.commands]) assert.ok(c.purpose.length > 0, c.name);
+});
+
+test('uninstall is listed and says dry-run is the default', () => {
+  const h = buildHelp({ port: 'claude', scope: 'project', lang: 'en', edition: '2026-08-26.8' });
+  const entry = h.commands.find((c) => c.name === 'uninstall');
+  assert.ok(entry, 'uninstall not listed in help');
+  assert.match(entry.purpose, /dry-run/i);
 });
 
 test('--json output is machine-readable and stable', () => {

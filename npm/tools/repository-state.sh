@@ -11,6 +11,7 @@ usage:
   bash repository-state.sh prepare-base [--repo <path>] [--base <branch>]
   bash repository-state.sh assert-archivable [--repo <path>] [--base <branch>]
   bash repository-state.sh assert-change <TICKET> [--repo <path>] [--allow-dirty] [--checkout] [--conventions <path>]
+  bash repository-state.sh mark-change <CHANGE-ID> --ticket <TICKET> [--repo <path>]
 EOF
 }
 
@@ -27,12 +28,19 @@ if [ "$MODE" = assert-change ]; then
   [ -n "$TICKET" ] || { usage; exit 2; }
   shift
 fi
+CHANGE_ID=""
+if [ "$MODE" = mark-change ]; then
+  CHANGE_ID=${1:-}
+  [ -n "$CHANGE_ID" ] || { usage; exit 2; }
+  shift
+fi
 
 REPO="."
 BASE_OVERRIDE="${SERPENS_BASE_BRANCH:-}"
 ALLOW_DIRTY=0
 CHECKOUT=0
 CONVENTIONS=""
+MARK_TICKET=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --repo) REPO=${2:-}; shift 2 ;;
@@ -40,11 +48,12 @@ while [ "$#" -gt 0 ]; do
     --allow-dirty) ALLOW_DIRTY=1; shift ;;
     --checkout) CHECKOUT=1; shift ;;
     --conventions) CONVENTIONS=${2:-}; shift 2 ;;
+    --ticket) MARK_TICKET=${2:-}; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "✗ unknown argument: $1" >&2; usage; exit 2 ;;
   esac
 done
-case "$MODE" in inspect|prepare-base|assert-archivable|assert-change) ;; *) echo "✗ unknown mode: $MODE" >&2; usage; exit 2 ;; esac
+case "$MODE" in inspect|prepare-base|assert-archivable|assert-change|mark-change) ;; *) echo "✗ unknown mode: $MODE" >&2; usage; exit 2 ;; esac
 if [ "$MODE" != assert-change ] && [ "$ALLOW_DIRTY" -eq 1 ]; then
   echo "✗ --allow-dirty is valid only with assert-change" >&2
   exit 2
@@ -57,6 +66,15 @@ if [ "$MODE" != assert-change ] && [ -n "$CONVENTIONS" ]; then
   echo "✗ --conventions is valid only with assert-change" >&2
   exit 2
 fi
+if [ "$MODE" = mark-change ] && [ -z "$MARK_TICKET" ]; then
+  echo "✗ mark-change requires --ticket <TICKET>" >&2
+  usage
+  exit 2
+fi
+if [ "$MODE" != mark-change ] && [ -n "$MARK_TICKET" ]; then
+  echo "✗ --ticket is valid only with mark-change" >&2
+  exit 2
+fi
 
 repo_top=$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || true)
 if [ -z "$repo_top" ]; then
@@ -64,6 +82,39 @@ if [ -z "$repo_top" ]; then
   exit 2
 fi
 REPO=$(cd "$repo_top" && pwd -P)
+
+# mark-change stands apart from the other modes: it does not care about the base branch, dirty
+# state, or the branch-naming contract — it just records ownership of an ALREADY-CREATED change
+# folder. Handled here, before bc_load and the base-branch resolution below, none of which it
+# needs (gap 2, serpens-openspec-coexistence-gaps-2026-09-22.md).
+if [ "$MODE" = mark-change ]; then
+  CHANGE_DIR="$REPO/openspec/changes/$CHANGE_ID"
+  if [ ! -d "$CHANGE_DIR" ]; then
+    echo "✗ no such change directory: $CHANGE_DIR" >&2
+    echo "  ↳ run <openspec> new change $CHANGE_ID first; mark-change never creates a change" >&2
+    exit 2
+  fi
+  MARKER="$CHANGE_DIR/.serpens.yaml"
+  if [ -f "$MARKER" ]; then
+    existing_ticket=$(grep -E '^ticket: ' "$MARKER" | head -1 | sed 's/^ticket: //')
+    if [ -n "$existing_ticket" ] && [ "$existing_ticket" != "$MARK_TICKET" ]; then
+      echo "✗ $MARKER already marks ticket $existing_ticket, refusing to overwrite with $MARK_TICKET" >&2
+      echo "  ↳ inspect it: cat \"$MARKER\"" >&2
+      exit 1
+    fi
+  fi
+  mark_branch=$(git -C "$REPO" symbolic-ref --quiet --short HEAD 2>/dev/null || true)
+  mark_created=$(date -u +%Y-%m-%d)
+  cat > "$MARKER" <<EOF
+# serpens-sdd:change-marker
+owner: serpens-sdd
+ticket: $MARK_TICKET
+branch: ${mark_branch:-DETACHED}
+created: $mark_created
+EOF
+  echo "✓ marked $CHANGE_ID as Serpens-owned (ticket $MARK_TICKET, branch ${mark_branch:-DETACHED})"
+  exit 0
+fi
 
 # Loaded here (once REPO is a resolved absolute path) rather than sourced separately for each
 # mode: assert-change is the only mode that reads BC_*, but resolving the contract is cheap and

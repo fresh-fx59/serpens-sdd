@@ -24,8 +24,13 @@ installation.
    <serpens-sdd> state inspect
    <serpens-sdd> state prepare-base
    ```
-2. Create `feature/<TICKET>` from the prepared base.
-3. Publish the branch with `git push -u origin feature/<TICKET>` before handing
+2. Ask for the branch name — never build it yourself:
+   ```bash
+   BRANCH=$(<serpens-sdd> git-naming --print-contract <TICKET> | awk -F'\t' '$1=="branch-example"{print $2}')
+   ```
+   The shape comes from the shop's `serpens/branching.md`, which is also what the
+   pre-push hook enforces. Create `$BRANCH` from the prepared base.
+3. Publish the branch with `git push -u origin "$BRANCH"` before handing
    it to another Serpens command.
 4. Run `assert-change <TICKET>` and record its output as the branch-state gate.
 

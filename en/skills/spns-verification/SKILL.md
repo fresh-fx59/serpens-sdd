@@ -1,6 +1,6 @@
 ---
 name: spns-verification
-description: Verification before completion — no done-claims without fresh evidence. Use before reporting ANY work finished.
+description: Verification before completion — no done-claims without fresh evidence. Use before reporting work finished on a Serpens change (spns-* commands or a change with `.serpens.yaml`).
 serpens-version: 2026-09-21.1
 ---
 ## The rule
@@ -8,7 +8,7 @@ Every claim of completion, for every kind of work, carries EVIDENCE produced AFT
 - code → the actual test-run output (fast + slow tier as applicable)
 - docs/specs → the `<serpens-sdd> verify-docs` green output
 - config/infra → the command that proves the new state (service status, a request through the
-  client `docs/testing-stack.md` names, pipeline run)
+  client `serpens/testing-stack.md` names, pipeline run)
 "Should work", "looks right", "the change is straightforward" are not evidence. If you cannot
 produce evidence, the honest report is "implemented but unverified because <reason>" — never "done".
 

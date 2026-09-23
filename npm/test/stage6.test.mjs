@@ -179,16 +179,16 @@ test('dryRun writes nothing', async () => {
   assert.equal(existsSync(join(ctx.storeRoot, '.claude')), false);
 });
 
-test('docs/testing-stack.md lands in each onboarded submodule (never the store, never the cwd), unanswered, and a re-run keeps every answer', async () => {
+test('serpens/testing-stack.md lands in each onboarded submodule (never the store, never the cwd), unanswered, and a re-run keeps every answer', async () => {
   const port = loadPort({ id: 'claude' });
   const ctx = baseCtx({ port, submodules: ['svc-a'] });
   const first = await installCommands(ctx);
   assert.equal(first.ok, true, first.error);
 
-  const dest = join(ctx.storeRoot, 'submodules', 'svc-a', 'docs', 'testing-stack.md');
-  assert.equal(existsSync(join(ctx.repoRoot, 'docs', 'testing-stack.md')), false,
+  const dest = join(ctx.storeRoot, 'submodules', 'svc-a', 'serpens', 'testing-stack.md');
+  assert.equal(existsSync(join(ctx.repoRoot, 'serpens', 'testing-stack.md')), false,
     'the CLI working directory must never receive testing-stack.md');
-  assert.equal(existsSync(join(ctx.storeRoot, 'docs', 'testing-stack.md')), false,
+  assert.equal(existsSync(join(ctx.storeRoot, 'serpens', 'testing-stack.md')), false,
     'the store is not a spoke — verify-docs treats testing-stack.md as spoke-only');
   assert.ok(existsSync(dest));
   const firstText = readFileSync(dest, 'utf8');
@@ -212,7 +212,7 @@ test('a filled file from an OLDER edition gains the sections it lacks, unanswere
   const port = loadPort({ id: 'claude' });
   const ctx = baseCtx({ port, submodules: ['svc-a'] });
   assert.equal((await installCommands(ctx)).ok, true);
-  const dest = join(ctx.storeRoot, 'submodules', 'svc-a', 'docs', 'testing-stack.md');
+  const dest = join(ctx.storeRoot, 'submodules', 'svc-a', 'serpens', 'testing-stack.md');
 
   // Stand in for edition 2026-09-09.1's file: the four original sections, fully answered, and
   // no `manual-access` section at all — because that edition did not have one. `stage6-install`
@@ -297,7 +297,7 @@ test('end-to-end: the real install produces a port-facts.md that gates verify-do
   const result = await installCommands(ctx);
   assert.equal(result.ok, true, result.error);
 
-  const portFactsPath = join(ctx.storeRoot, 'port-facts.md');
+  const portFactsPath = join(ctx.storeRoot, 'serpens', 'port-facts.md');
   const rendered = readFileSync(portFactsPath, 'utf8');
   assert.match(rendered, /^STATUS: PARTIAL — 4 UNFILLED sections/m);
   assert.match(rendered, new RegExp(OPENSPEC_INVOCATION.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
@@ -308,7 +308,7 @@ test('end-to-end: the real install produces a port-facts.md that gates verify-do
   // green, isolating what the UNFILLED gate itself decides.
   mkdirSync(join(ctx.storeRoot, 'openspec', 'specs'), { recursive: true });
   mkdirSync(join(ctx.storeRoot, 'openspec', 'changes'), { recursive: true });
-  writeFileSync(join(ctx.storeRoot, 'openspec', 'repo.txt'), 'store\n', 'utf8');
+  writeFileSync(join(ctx.storeRoot, 'serpens', 'repo.txt'), 'store\n', 'utf8');
   const { cmd: indexCmd, args: indexArgs } = resolveTool('index');
   const indexed = await run(indexCmd, indexArgs, { cwd: ctx.storeRoot });
   assert.equal(indexed.code, 0, indexed.stderr);

@@ -1,4 +1,5 @@
-// `docs/testing-stack.md` — the one per-repository facts file. Two commands and two skills read
+import { LAYOUT } from './layout.mjs';
+// `serpens/testing-stack.md` — the one per-repository facts file. Two commands and two skills read
 // it (`spns-test-plan`, `spns-autotest`, `spns-tdd`, `spns-debugging`), so it is the layer that
 // lets the kit ship without naming a single technology, protocol or query language a CUSTOMER
 // chose.
@@ -207,14 +208,14 @@ export function splitSections(text) {
 }
 
 /**
- * Validate one `docs/testing-stack.md` body against the schema described at the top of this
+ * Validate one `serpens/testing-stack.md` body against the schema described at the top of this
  * file. Pure: takes text, returns problems. Every problem string is a complete remediation
  * sentence, because `verify-docs` prints it to somebody who has never read this module.
  * @param {string} text
  * @param {{path?: string}} [opts] - `path` only decorates the messages
  * @returns {{ok: boolean, problems: string[]}}
  */
-export function validateTestingStack(text, { path = 'docs/testing-stack.md' } = {}) {
+export function validateTestingStack(text, { path = LAYOUT.testingStack } = {}) {
   const problems = [];
   const sections = splitSections(text);
 
@@ -373,7 +374,7 @@ function validateSlots(text, path) {
 }
 
 /**
- * How many facts a `docs/testing-stack.md` body still owes — the number the rendered STATUS
+ * How many facts a `serpens/testing-stack.md` body still owes — the number the rendered STATUS
  * line reports and `init` prints, so "how far from green am I" is one number in three places.
  * @param {string} text
  * @returns {number}
@@ -397,7 +398,7 @@ export function renderTestingStack(templateText) {
 }
 
 /**
- * Upgrade an EXISTING `docs/testing-stack.md` to the current schema without touching one word
+ * Upgrade an EXISTING `serpens/testing-stack.md` to the current schema without touching one word
  * the team wrote.
  *
  * Why it is needed: `stage6-install.mjs` never overwrites a file that already exists — correct,

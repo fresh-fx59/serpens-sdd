@@ -6,8 +6,8 @@
 #   <target>/sample-service/.claude/  the seven kit commands + six kit skills, BOTH substitution
 #                                      tokens resolved, installed by the package's own stage6
 #                                      installer (src/stages/stage6-install.mjs:installCommands)
-#   <target>/sample-service/tools/serpens-sdd        wrapper shim: logs, then execs the real one
-#   <target>/sample-service/tools/.serpens-sdd-real   the real generated shim (src/shim.mjs:writeShim)
+#   <target>/sample-service/serpens/bin/serpens-sdd        wrapper shim: logs, then execs the real one
+#   <target>/sample-service/serpens/bin/.serpens-sdd-real   the real generated shim (src/shim.mjs:writeShim)
 #   <target>/sample-service/lefthook.yml     rendered by src/shim.mjs:renderLefthook
 #   <target>/bin/openspec             a stub OpenSpec CLI (NOT the real thing — see below)
 #   <target>/openspec-calls.log            every invocation the OpenSpec stub received
@@ -103,7 +103,7 @@ mkdir -p "$REPO"
 # --- Step 1: throwaway target repo ------------------------------------------------------------
 git -C "$REPO" init --quiet -b main
 mkdir -p "$REPO/openspec/specs" "$REPO/openspec/changes" "$REPO/docs"
-# openspec/index.{json,md} + repo.txt are generated below (Step 1b) by the real gen-index.mjs,
+# serpens/index.{json,md} + repo.txt are generated below (Step 1b) by the real gen-index.mjs,
 # not hand-written here — a hand-written index.md previously disagreed with what `index --check`
 # (part of verify-docs) expects, so verify-docs always failed on a freshly built fixture.
 cat > "$REPO/docs/README.md" <<'EOF'
@@ -192,7 +192,7 @@ const ctx = {
     openspec: { invocation: '$TARGET/bin/openspec' },
     // serpens_sdd.invocation is deliberately NOT set: the gate must exercise the installer's own
     // default (src/resolve.mjs + stage6-install.mjs), which is the shim at
-    // "\$(git rev-parse --show-toplevel)"/tools/serpens-sdd. Runs 1 and 2 hand-set it here, before
+    // "\$(git rev-parse --show-toplevel)"/serpens/bin/serpens-sdd. Runs 1 and 2 hand-set it here, before
     // that default existed — see the limitations section of weak-model-gate-2026-09-08.md.
     store: { id: 'sample-service' },
     facts: { repository_source: 'manual' },
@@ -235,21 +235,21 @@ rm -f "$SHIM_SCRIPT"
 # --- Step 3b: independent invocation capture (Task 12 fix round 2, Finding 5) ------------------
 # The rubric's greps previously only ever read a log the MODEL wrote about itself (its own
 # transcript) — a model can misreport, and did. Wrap the real generated shim with a logger the
-# model does not write to and has no reason to look at: `tools/serpens-sdd` becomes the wrapper,
-# the real writeShim() output moves to `tools/.serpens-sdd-real`, and every invocation (argv, cwd,
+# model does not write to and has no reason to look at: `serpens/bin/serpens-sdd` becomes the wrapper,
+# the real writeShim() output moves to `serpens/bin/.serpens-sdd-real`, and every invocation (argv, cwd,
 # exit code, timestamp) is appended mechanically to `<target>/independent-invocations.log` BEFORE
 # control returns to whatever called the shim — so it captures ground truth regardless of what
 # the model later claims. Kept alongside is the model-written transcript; the rubric now scores
 # BOTH and flags any disagreement between them as a finding in its own right.
-REAL_SHIM="$REPO/tools/.serpens-sdd-real"
-mv "$REPO/tools/serpens-sdd" "$REAL_SHIM"
+REAL_SHIM="$REPO/serpens/bin/.serpens-sdd-real"
+mv "$REPO/serpens/bin/serpens-sdd" "$REAL_SHIM"
 INDEP_LOG="$TARGET/independent-invocations.log"
 : > "$INDEP_LOG"
-cat > "$REPO/tools/serpens-sdd" <<WRAP
+cat > "$REPO/serpens/bin/serpens-sdd" <<WRAP
 #!/bin/sh
 # serpens-sdd shim wrapper -- logs every invocation independently of the model's own transcript.
 # Written by weak-model-gate-fixture.sh; the real shim (writeShim's own output) is
-# tools/.serpens-sdd-real, execed after the log line is appended.
+# serpens/bin/.serpens-sdd-real, execed after the log line is appended.
 LOG='$INDEP_LOG'
 HERE="\$(CDPATH= cd -- "\$(dirname -- "\$0")" && pwd)"
 REAL="\$HERE/.serpens-sdd-real"
@@ -262,12 +262,12 @@ RC=\$?
 } >> "\$LOG"
 exit \$RC
 WRAP
-chmod +x "$REPO/tools/serpens-sdd"
+chmod +x "$REPO/serpens/bin/serpens-sdd"
 
 # --- Step 3b2: capture BOTH names (2026-09-09.1 rename, spec §7) -----------------------------
 # The pre-rename gate wrapped a binary literally named `corp-sdd`, so its evidence says nothing
 # about `serpens-sdd`. This edition wraps both, on PATH:
-#   `serpens-sdd`  -> the same wrapper as tools/serpens-sdd, so a bare invocation is captured in
+#   `serpens-sdd`  -> the same wrapper as serpens/bin/serpens-sdd, so a bare invocation is captured in
 #                     independent-invocations.log exactly like a repo-relative one;
 #   `corp-sdd`     -> a DEAD NAME decoy that logs to dead-name-invocations.log and exits 127.
 # A non-empty dead-name log is an automatic FAIL: it means the prose (or the model's memory of
@@ -283,7 +283,7 @@ DEAD_LOG="$TARGET/dead-name-invocations.log"
 cat > "$TARGET/bin/serpens-sdd" <<PATHSHIM
 #!/bin/sh
 # on-PATH alias for the wrapped shim, so a bare \`serpens-sdd\` is captured too.
-exec '$REPO/tools/serpens-sdd' "\$@"
+exec '$REPO/serpens/bin/serpens-sdd' "\$@"
 PATHSHIM
 chmod +x "$TARGET/bin/serpens-sdd"
 cat > "$TARGET/bin/corp-sdd" <<DECOY
@@ -353,12 +353,12 @@ text = re.sub(
 open(path, "w").write(text)
 print("port-facts.md: filled 4 UNFILLED sections with fixture values")
 PYFILL
-python3 "$FILL_SCRIPT" "$REPO/port-facts.md"
+python3 "$FILL_SCRIPT" "$REPO/serpens/port-facts.md"
 rm -f "$FILL_SCRIPT"
 
-# --- Step 3d: docs/testing-stack.md + templates/, FILLED with fixture answers ------------------
+# --- Step 3d: serpens/testing-stack.md + templates/, FILLED with fixture answers ------------------
 # Edition 2026-09-10.1 moved every tester-facing fact (what a tester can send, produce, query and
-# observe from outside) out of `spns-test-plan` and into `docs/testing-stack.md`, and made both
+# observe from outside) out of `spns-test-plan` and into `serpens/testing-stack.md`, and made both
 # `spns-test-plan` and `spns-autotest` STOP and ask the team when that file is absent or its
 # facts are incomplete. A fixture without it therefore hands the model a dead end on two of the
 # seven commands, and verify-docs correctly refuses to go green in a repository the kit was
@@ -367,14 +367,14 @@ rm -f "$FILL_SCRIPT"
 #
 # So this writes what a real repository has once the team has filled it in: the kit's own
 # templates/ copy (which is what marks the repository onboarded, and what the commands cite by
-# path), plus docs/testing-stack.md with every section and all twelve Manual testing access
+# path), plus serpens/testing-stack.md with every section and all twelve Manual testing access
 # slots answered. Every answer is INVENTED FOR THIS FIXTURE, says so in its own text, and is
 # deliberately generic — naming a real broker or query language here would put a customer
 # technology back into the repository through the fixture, the exact leak the publish gate
 # exists to catch. The script asserts the result schema-validates, so a schema that grows
 # without this step growing with it is a loud fixture failure, never a silent partial fill.
-mkdir -p "$REPO/templates" "$REPO/docs"
-cp "$PKG_DIR/kits/$LANG_CODE/templates/testing-stack.md" "$REPO/templates/testing-stack.md"
+mkdir -p "$REPO/serpens/templates" "$REPO/serpens"
+cp "$PKG_DIR/kits/$LANG_CODE/templates/testing-stack.md" "$REPO/serpens/templates/testing-stack.md"
 TS_SCRIPT="$TARGET/.fill-testing-stack.mjs"
 cat > "$TS_SCRIPT" <<'TSFILL'
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -425,14 +425,14 @@ if (Object.keys(ANSWERS).length !== MANUAL_ACCESS_SLOTS.length) {
 }
 const { ok, problems } = validateTestingStack(text, { path: outPath });
 if (!ok) {
-  console.error('FATAL: the fixture wrote an incomplete docs/testing-stack.md — the schema grew and this step did not:');
+  console.error('FATAL: the fixture wrote an incomplete serpens/testing-stack.md — the schema grew and this step did not:');
   console.error(problems.join('\n'));
   process.exit(1);
 }
 writeFileSync(outPath, text, 'utf8');
-console.log(`docs/testing-stack.md: every section and all ${MANUAL_ACCESS_SLOTS.length} Manual testing access slots answered with fixture values`);
+console.log(`serpens/testing-stack.md: every section and all ${MANUAL_ACCESS_SLOTS.length} Manual testing access slots answered with fixture values`);
 TSFILL
-node "$TS_SCRIPT" "$PKG_DIR" "$REPO/templates/testing-stack.md" "$REPO/docs/testing-stack.md"
+node "$TS_SCRIPT" "$PKG_DIR" "$REPO/serpens/templates/testing-stack.md" "$REPO/serpens/testing-stack.md"
 rm -f "$TS_SCRIPT"
 
 # --- Step 3e: commit the scaffolding (Task 12 fix round 3) -------------------------------------
@@ -470,7 +470,7 @@ start to finish.
 EOF
 
 # --- Step 3e: prove the shim resolves ----------------------------------------------------------
-# Bare `tools/serpens-sdd version` (no arguments) has printed the installed edition since fix round
+# Bare `serpens/bin/serpens-sdd version` (no arguments) has printed the installed edition since fix round
 # 1 (commit 83ed4e1: defaultVersionArgv supplies `show --root <the package's own kit>` when
 # called with no arguments). The explicit `show --root "$PKG_DIR/kits/$LANG_CODE"` below is
 # belt-and-braces on top of that, not a workaround for a missing default: it cross-checks
@@ -478,7 +478,7 @@ EOF
 # rather than the CLI's own built-in 'en' default, which would silently agree even if this
 # fixture had installed the ru kit.
 echo "== verifying the shim =="
-(cd "$REPO" && tools/serpens-sdd version show --root "$PKG_DIR/kits/$LANG_CODE")
+(cd "$REPO" && serpens/bin/serpens-sdd version show --root "$PKG_DIR/kits/$LANG_CODE")
 
 echo "== fixture built =="
 echo "repo:        $REPO"

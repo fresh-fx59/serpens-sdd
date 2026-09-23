@@ -15,7 +15,7 @@ serpens-version: 2026-09-21.1
 |---|---|---|
 | Только изучение | `inspect` | Показывает базу, ветку, upstream, dirty, stash, ahead/behind |
 | Новая работа | `prepare-base` | Переходит на базу и делает только проверенный fast-forward |
-| Работа по истории | `assert-change <TICKET>` | Требует точную `feature/<TICKET>`, upstream и отсутствие behind |
+| Работа по истории | `assert-change <TICKET>` | Требует точную ветку истории, upstream и отсутствие behind |
 | Перейти на ветку истории | `assert-change <TICKET> --checkout` | Переключает на СУЩЕСТВУЮЩУЮ ветку (локально или на origin); никогда не создаёт её |
 | Продолжение правок | `assert-change <TICKET> --allow-dirty` | Та же проверка ветки; известные правки разрешены |
 | Архивация после merge | `assert-archivable` | Чистое дерево, пустой stash, HEAD содержит базу |

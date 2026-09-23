@@ -62,8 +62,11 @@ if (args[0] === '--version') {
 }
 
 if (args[0] === 'init') {
+  // The same directory set real `openspec init` creates (1.13.1, dist/core/init.js:613-624),
+  // including `changes/archive` — stage 5's brownfield branch asserts exactly this set instead
+  // of running init, so a stub that created less would make a re-run look broken.
   mkdirSync(join(process.cwd(), 'openspec', 'specs'), { recursive: true });
-  mkdirSync(join(process.cwd(), 'openspec', 'changes'), { recursive: true });
+  mkdirSync(join(process.cwd(), 'openspec', 'changes', 'archive'), { recursive: true });
   process.exit(0);
 }
 

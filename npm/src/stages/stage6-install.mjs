@@ -2,7 +2,8 @@ import {
   existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
-import { basename, join, relative } from 'node:path';
+import { basename, dirname, join, relative } from 'node:path';
+import { LAYOUT } from '../layout.mjs';
 import { resolveScope, assertLintScope } from '../scope.mjs';
 import { readGitmodules } from '../inventory.mjs';
 import { splitInvocation } from '../invocation.mjs';
@@ -61,7 +62,12 @@ export function commandDestination(port, commandDir, file) {
  * @returns {string[]}
  */
 export function installPlan(ctx) {
-  const { config, port, kitDir, storeRoot } = ctx;
+  const { config, port, kitDir } = ctx;
+  // Repo-local (step 6, gap 3): the one repository plays the store's part (facts, scope
+  // decision) AND the spoke's part (testing-stack.md); there is no submodules/ to walk.
+  const repoLocal = ctx.topology === 'repo-local';
+  const storeRoot = repoLocal ? ctx.repoRoot : ctx.storeRoot;
+  const factsRoot = ctx.factsRoot ?? storeRoot;
   const home = ctx.home ?? homedir();
   const force = config?.port_scope && config.port_scope !== 'auto' ? config.port_scope : undefined;
   const lines = ['dry-run: stage6 would do (nothing below is written):'];
@@ -73,7 +79,7 @@ export function installPlan(ctx) {
   }
 
   const submodulesDir = join(storeRoot, 'submodules');
-  const submoduleRoots = existsSync(submodulesDir)
+  const submoduleRoots = repoLocal ? [ctx.repoRoot] : existsSync(submodulesDir)
     ? readdirSync(submodulesDir, { withFileTypes: true }).filter((e) => e.isDirectory())
       .map((e) => join(submodulesDir, e.name)).sort()
     : [];
@@ -81,7 +87,7 @@ export function installPlan(ctx) {
   const order = force ? [force] : (port.scope_preference ?? []);
   lines.push(`  scope preference: ${order.join(' -> ')}${force ? ' (forced by --port-scope)' : ''}`);
   const userRoot = join(home, port.agent_dir);
-  const projectRoots = [storeRoot, ...submoduleRoots].map((r) => join(r, port.agent_dir));
+  const projectRoots = (repoLocal ? [ctx.repoRoot] : [storeRoot, ...submoduleRoots]).map((r) => join(r, port.agent_dir));
   if (order.includes('user')) lines.push(`    user candidate:    ${userRoot} (chosen only if a real write probe succeeds)`);
   if (order.includes('project')) lines.push(`    project candidates: ${projectRoots.join(', ')}`);
 
@@ -97,16 +103,16 @@ export function installPlan(ctx) {
     lines.push(`    $ write <agent-root>/${join(port.skill_dir, skillName, 'SKILL.md')}`);
   }
   lines.push('  $ grep -rnE \'<openspec>|<serpens-sdd>\' <every installed command+skill dir>   # must find nothing');
-  if (order.includes('user')) {
+  if (order.includes('user') && !repoLocal) {
     lines.push(`  if user scope wins: $ git -C ${storeRoot} config serpens.agentDir <rel path to ${userRoot}>, then the planted-probe lint proof`);
   }
   for (const root of submoduleRoots) {
-    lines.push(`  $ write ${join(root, 'docs', 'testing-stack.md')}   # only when absent; never overwritten`);
+    lines.push(`  $ write ${join(root, LAYOUT.testingStack)}   # only when absent; never overwritten`);
   }
   if (submoduleRoots.length === 0) {
-    lines.push('  no onboarded submodule on disk — docs/testing-stack.md would be written nowhere');
+    lines.push(`  no onboarded submodule on disk — ${LAYOUT.testingStack} would be written nowhere`);
   }
-  lines.push(`  $ write ${join(storeRoot, 'port-facts.md')}   # rendered from what this run proved`);
+  lines.push(`  $ write ${join(factsRoot, LAYOUT.portFacts)}   # rendered from what this run proved`);
   return lines;
 }
 
@@ -123,7 +129,7 @@ export function installPlan(ctx) {
  * inventing a location. A port with `skills_supported: false` stops too: inlining six skill
  * bodies into the command text is prose rewriting, not copying, and no script here may attempt
  * it (YAGNI — this is out of scope by design, not an oversight).
- * Once the install is actually proven, it also renders `<storeRoot>/port-facts.md` from
+ * Once the install is actually proven, it also renders `<storeRoot>/serpens/port-facts.md` from
  * exactly what was proven here — the resolved OpenSpec invocation, the port, the chosen scope,
  * `git config serpens.agentDir`, the kit edition, and the store id/root/repository_source — and
  * writes it over whatever copy is there (the raw, still-templated copy stage 3 installed, or an
@@ -134,7 +140,12 @@ export function installPlan(ctx) {
  * @returns {Promise<{ok: boolean, evidence: string[], error?: string, exitCode?: number}>}
  */
 export async function installCommands(ctx) {
-  const { config, port, run, log, kitDir, storeRoot, dryRun = false } = ctx;
+  const { config, port, run, log, kitDir, dryRun = false } = ctx;
+  // Repo-local (step 6, gap 3): the one repository is both the scope-decision root (the store's
+  // part) and the only testing-stack target (the spoke's part); facts go to `ctx.factsRoot`.
+  const repoLocal = ctx.topology === 'repo-local';
+  const storeRoot = repoLocal ? ctx.repoRoot : ctx.storeRoot;
+  const factsRoot = ctx.factsRoot ?? storeRoot;
   const lang = config?.lang ?? 'en';
   const evidence = [];
 
@@ -174,7 +185,8 @@ export async function installCommands(ctx) {
   // repository that always exists by the time this stage runs); user scope then installs once
   // into `$HOME/<agent_dir>`, project scope installs into every project root.
   const submoduleRoots = [];
-  try {
+  if (repoLocal) submoduleRoots.push(ctx.repoRoot);
+  else try {
     const rows = await readGitmodules(storeRoot, { run });
     for (const row of rows) {
       const path = join(storeRoot, 'submodules', row.name);
@@ -183,7 +195,7 @@ export async function installCommands(ctx) {
   } catch (err) {
     return fail(`could not read .gitmodules to resolve the project-scope install targets: ${err.message}`, err.exitCode ?? 2);
   }
-  const projectRoots = [storeRoot, ...submoduleRoots];
+  const projectRoots = repoLocal ? [ctx.repoRoot] : [storeRoot, ...submoduleRoots];
 
   let scopeResult;
   try {
@@ -263,7 +275,8 @@ export async function installCommands(ctx) {
   // AND in every submodule (stage 5 does each submodule as it onboards it; the store has no
   // onboarding pass of its own, so it is done here) — and then PROVEN, by the same
   // planted-probe route stage 5 uses, because a gate that cannot be shown active is failed.
-  if (scopeResult.scope === 'user') {
+  // Repo-local: stage 5 already set AND proved serpens.agentDir in this same repository.
+  if (scopeResult.scope === 'user' && !repoLocal) {
     const agentDirRel = relative(storeRoot, scopeResult.agentRoot);
     const configured = await run('git', ['-C', storeRoot, 'config', 'serpens.agentDir', agentDirRel], { log });
     evidence.push(`$ git -C ${storeRoot} config serpens.agentDir ${agentDirRel} → exit ${configured.code}`);
@@ -279,21 +292,21 @@ export async function installCommands(ctx) {
     }
   }
 
-  // 4. docs/SETUP.md §5 step 6a: `docs/testing-stack.md` in EACH onboarded repository — not in
+  // 4. docs/SETUP.md §5 step 6a: the testing-stack facts in EACH onboarded repository — not in
   // the CLI's working directory, and (per verify-docs' own store/spoke rule) not in the store.
   // Controller-ruled into this stage rather than stage 5: it is the same class of
   // team-authored, UNFILLED-gated content as port-facts.md, not mechanical onboarding.
   // Re-runnable: never overwrite a copy the team has already started filling in.
   if (submoduleRoots.length === 0) {
-    evidence.push('no onboarded submodule on disk — docs/testing-stack.md was not written anywhere');
+    evidence.push(`no onboarded submodule on disk — ${LAYOUT.testingStack} was not written anywhere`);
   }
   for (const root of submoduleRoots) {
-    const testingStackDest = join(root, 'docs', 'testing-stack.md');
+    const testingStackDest = join(root, LAYOUT.testingStack);
     const templatePath = join(kitDir, 'templates', 'testing-stack.md');
     const templateText = readFileSync(templatePath, 'utf8');
     if (!existsSync(testingStackDest)) {
       const rendered = renderTestingStack(templateText);
-      recordWrite(`mkdir -p ${join(root, 'docs')}`, () => mkdirSync(join(root, 'docs'), { recursive: true }));
+      recordWrite(`mkdir -p ${dirname(testingStackDest)}`, () => mkdirSync(dirname(testingStackDest), { recursive: true }));
       recordWrite(`write ${testingStackDest}`, () => writeFileSync(testingStackDest, rendered, 'utf8'));
     } else {
       // The UPGRADE path. Never overwriting an existing file is right — it holds the team's own
@@ -320,7 +333,7 @@ export async function installCommands(ctx) {
   // whatever was there — the raw template stage 3 installed, or an earlier run's rendering.
   // Controller ruling: only stage 6 can produce the real facts (port, scope, serpens.agentDir and
   // the store path all resolve here, not in stage 3), so stage 6 is the one write site.
-  if (storeRoot) {
+  if (factsRoot) {
     const edition = ctx.edition ?? PACKAGE_EDITION;
     const repositorySource = config?.facts?.repository_source ?? 'manual';
     const rendered = renderPortFacts({
@@ -332,9 +345,16 @@ export async function installCommands(ctx) {
       storeId: config?.store?.id,
       storeRoot,
       repositorySource,
+      ...(repoLocal ? { topology: 'repo-local', repoName: config?.repo?.name } : {}),
     });
-    const portFactsDest = join(storeRoot, 'port-facts.md');
-    recordWrite(`write ${portFactsDest}`, () => writeFileSync(portFactsDest, rendered, 'utf8'));
+    const portFactsDest = join(factsRoot, LAYOUT.portFacts);
+    // `serpens/` may not exist yet: stage 3 creates it when it builds the store, but stage 6 also
+    // runs against a store somebody else cloned, and a missing parent directory here used to be
+    // an ENOENT thrown from inside a write the evidence log had already announced.
+    recordWrite(`write ${portFactsDest}`, () => {
+      mkdirSync(dirname(portFactsDest), { recursive: true });
+      writeFileSync(portFactsDest, rendered, 'utf8');
+    });
   } else {
     evidence.push('no storeRoot in ctx — port-facts.md was not rendered (nothing to prove the store path against)');
   }

@@ -238,13 +238,14 @@ export function classifyTargetOnly(mapping, preserved) {
 }
 
 /**
- * F8(a): PRESERVED_PUBLIC_ROOT_FILES (docs/RENAME.md, docs/index.html, docs/common-contract.html
- * — §10's three repo-root preserved files) was parsed by preserved-public-docs.mjs and asserted
+ * F8(a): PRESERVED_PUBLIC_ROOT_FILES (docs/index.html, docs/common-contract.html — §10's
+ * repo-root preserved files; docs/RENAME.md was dropped 2026-09-21, see
+ * tests/preserved-public-docs.sh) was parsed by preserved-public-docs.mjs and asserted
  * by prune-public-tree.test.mjs, but consumed by no production code path: docs/ is on
  * UNTOUCHED_TOP_LEVEL and this script never looks inside it, so the list had no effect either
  * way. Rather than delete the check (it is real, load-bearing documentation of what the public
  * repo's docs/ must carry), consume it here as an informational verification: report which of
- * the three §10 root files are actually present in this checkout's untouched docs/. This never
+ * the §10 root files are actually present in this checkout's untouched docs/. This never
  * refuses the run — docs/ is out of scope for prune/delete decisions by design (§10) — it only
  * makes a silent "nothing there" visible instead of unconsumed dead data.
  * @param {string} publicRepoDir

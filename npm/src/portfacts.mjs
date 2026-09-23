@@ -58,7 +58,7 @@ export function unfilledCount(text) {
  */
 export function renderPortFacts(facts) {
   const {
-    openspec, port, scope, agentDir, edition, storeId, storeRoot, repositorySource,
+    openspec, port, scope, agentDir, edition, storeId, storeRoot, repositorySource, topology, repoName,
     probedDate = new Date().toISOString().slice(0, 10),
   } = facts;
 
@@ -76,7 +76,12 @@ export function renderPortFacts(facts) {
   lines.push(`| P1 | agent home + git config serpens.agentDir | \`git config serpens.agentDir\` | scope: ${scope}; agentDir: ${agentDir} | set |`);
   lines.push(`| P2 | resolved OpenSpec CLI invocation | \`${openspec} --version\` | ${openspec} | proven |`);
   lines.push(`| P3 | kit edition | n/a | ${edition} | recorded |`);
-  lines.push(`| P4 | store id, root, repository_source | \`openspec store list\` | id=${storeId}; root=${storeRoot}; repository_source=${repositorySource} | proven |`);
+  if (topology === 'repo-local') {
+    // Step 6 (gap 3): no store exists, so P4 records the topology instead of a store id.
+    lines.push(`| P4 | topology, repository, repository_source | \`cat serpens/topology\` | topology=repo-local (no system store); repo=${repoName}; root=${storeRoot}; repository_source=${repositorySource} | proven |`);
+  } else {
+    lines.push(`| P4 | store id, root, repository_source | \`openspec store list\` | id=${storeId}; root=${storeRoot}; repository_source=${repositorySource} | proven |`);
+  }
   lines.push('');
   for (const section of UNFILLED_SECTIONS) {
     lines.push(`## ${section.title}`);

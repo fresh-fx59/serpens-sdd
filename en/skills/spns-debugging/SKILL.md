@@ -1,6 +1,6 @@
 ---
 name: spns-debugging
-description: Systematic root-cause debugging. Use when ANY test fails unexpectedly or behavior contradicts the spec — BEFORE attempting fixes.
+description: Systematic root-cause debugging. Use when a test fails unexpectedly or behavior contradicts the spec on a Serpens change (spns-* commands or a change with `.serpens.yaml`) — BEFORE attempting fixes.
 serpens-version: 2026-09-21.1
 ---
 ## The law
@@ -17,7 +17,7 @@ most expensive bugs you will ship.
    assume) → serialization and configuration boundaries (is the message shape what you think? is
    the dependency actually the one wired in? is the config value actually loaded?) → stored state
    (what the store really holds vs what you expect) → only then upstream systems. The concrete
-   technologies at each step belong to the repository: read `docs/testing-stack.md` §Debugging
+   technologies at each step belong to the repository: read `serpens/testing-stack.md` §Debugging
    boundary order and walk the chain it names. Cross-component bugs are found at a boundary where
    reality stops matching assumption — find THAT boundary before touching code.
 4. FIX THE CLASS, verify, then ask: can this same mistake exist elsewhere? Fix the pattern (or

@@ -1,12 +1,12 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { run } from '../src/run.mjs';
 import { kitPath } from '../src/integrity.mjs';
-import { stage3 } from '../src/stages/stage3-store.mjs';
+import { stage3, seedRepoFacts } from '../src/stages/stage3-store.mjs';
 import { makeBareRemote, fakeOpenspec } from './helpers/fixture.mjs';
 
 const KIT_DIR = kitPath('en');
@@ -43,8 +43,8 @@ test('remote already has the base ref: clones, never git-inits a second history'
   const roots = execFileSync('git', ['-C', storeRoot, 'rev-list', '--max-parents=0', 'HEAD'], { encoding: 'utf8' }).trim().split('\n');
   assert.deepEqual(roots, [remote.headCommit]);
 
-  // No script copies — only the shim lives in tools/.
-  assert.deepEqual(readdirSync(join(storeRoot, 'tools')), ['serpens-sdd']);
+  // No script copies — only the shim lives under serpens/bin/.
+  assert.deepEqual(readdirSync(join(storeRoot, 'serpens', 'bin')), ['serpens-sdd']);
 });
 
 test('no ref and no local store: copies the template and inits', async () => {
@@ -63,21 +63,21 @@ test('no ref and no local store: copies the template and inits', async () => {
 
   // Template files are present.
   assert.ok(existsSync(join(storeRoot, 'README.md')));
-  assert.ok(existsSync(join(storeRoot, 'conventions')));
+  assert.ok(existsSync(join(storeRoot, 'serpens')));
   assert.ok(existsSync(join(storeRoot, 'openspec')));
 
   // All six templates the kit's commands cite by path land at their documented destinations.
   for (const f of ['adr.md', 'research.md', 'store-contract.md', 'testing-stack.md']) {
-    assert.ok(existsSync(join(storeRoot, 'templates', f)), `templates/${f} missing`);
+    assert.ok(existsSync(join(storeRoot, 'serpens', 'templates', f)), `serpens/templates/${f} missing`);
   }
-  assert.ok(existsSync(join(storeRoot, 'port-facts.md')));
-  assert.ok(existsSync(join(storeRoot, 'conventions', 'branching.md')));
+  assert.ok(existsSync(join(storeRoot, 'serpens', 'port-facts.md')));
+  assert.ok(existsSync(join(storeRoot, 'serpens', 'branching.md')));
 
   const head = execFileSync('git', ['-C', storeRoot, 'branch', '--show-current'], { encoding: 'utf8' }).trim();
   assert.equal(head, 'develop');
 
   // No script copies here either.
-  const tools = readdirSync(join(storeRoot, 'tools')).filter((f) => f !== '.gitkeep');
+  const tools = readdirSync(join(storeRoot, 'serpens', 'bin')).filter((f) => f !== '.gitkeep');
   assert.deepEqual(tools, ['serpens-sdd']);
 });
 
@@ -118,7 +118,7 @@ test('store already local: neither clones nor copies, and leaves the worktree un
   assert.ok(!result.evidence.some((e) => /\$ git init/.test(e)));
 });
 
-test('no tools/ copies are made in the store: only the shim, never repository-state.sh', async () => {
+test('no script copies are made in the store: only the shim, never repository-state.sh', async () => {
   const remote = makeBareRemote('tools-case', { base: 'develop' });
   const parent = mkdtempSync(join(tmpdir(), 'serpens-sdd-store-parent-'));
   const storeRoot = join(parent, 'store');
@@ -127,7 +127,7 @@ test('no tools/ copies are made in the store: only the shim, never repository-st
   const result = await stage3(ctx);
 
   assert.equal(result.ok, true);
-  const tools = readdirSync(join(storeRoot, 'tools'));
+  const tools = readdirSync(join(storeRoot, 'serpens', 'bin'));
   assert.ok(tools.includes('serpens-sdd'));
   assert.ok(!tools.includes('repository-state.sh'));
   assert.ok(!tools.includes('sync-submodules.sh'));
@@ -206,4 +206,37 @@ test('an existing storeRoot that is a git repository but not its own root fails 
   assert.equal(result.ok, false);
   assert.equal(result.exitCode, 3);
   assert.match(result.error, /not its own git root/);
+});
+
+// Step 6 (gap 3): repo-local mode has no store; stage 3 is replaced by seedRepoFacts, which
+// seeds the two fact files into the trial repository's own serpens/ — only when absent.
+test('seedRepoFacts writes branching.md and serpens/.gitignore into the repo when absent (port-facts.md is stage 6\'s, rendered)', async () => {
+  const repoRoot = mkdtempSync(join(tmpdir(), 'serpens-sdd-seed-'));
+  const r = await seedRepoFacts({ config: { lang: 'en' }, repoRoot, kitDir: KIT_DIR });
+  assert.equal(r.ok, true, r.error);
+  assert.equal(readFileSync(join(repoRoot, 'serpens', 'branching.md'), 'utf8'),
+    readFileSync(join(KIT_DIR, 'templates', 'conventions-branching.md'), 'utf8'));
+  assert.equal(existsSync(join(repoRoot, 'serpens', 'port-facts.md')), false,
+    'the raw port-facts template fails stage 5 lint in the onboarded repo; stage 6 renders it');
+  assert.match(readFileSync(join(repoRoot, 'serpens', '.gitignore'), 'utf8'), /^\.serpens-sdd-init-\*\.log$/m);
+});
+
+test('seedRepoFacts never overwrites an existing branching.md, and leaves port-facts.md alone', async () => {
+  const repoRoot = mkdtempSync(join(tmpdir(), 'serpens-sdd-seed-keep-'));
+  mkdirSync(join(repoRoot, 'serpens'), { recursive: true });
+  writeFileSync(join(repoRoot, 'serpens', 'branching.md'), '# ours, hand-edited\n');
+  writeFileSync(join(repoRoot, 'serpens', 'port-facts.md'), '# facts, answered\n');
+  const r = await seedRepoFacts({ config: { lang: 'en' }, repoRoot, kitDir: KIT_DIR });
+  assert.equal(r.ok, true, r.error);
+  assert.equal(readFileSync(join(repoRoot, 'serpens', 'branching.md'), 'utf8'), '# ours, hand-edited\n');
+  assert.equal(readFileSync(join(repoRoot, 'serpens', 'port-facts.md'), 'utf8'), '# facts, answered\n');
+  assert.match(r.evidence.join('\n'), /branching\.md already present — not overwritten/);
+});
+
+test('seedRepoFacts --dry-run writes nothing', async () => {
+  const repoRoot = mkdtempSync(join(tmpdir(), 'serpens-sdd-seed-dry-'));
+  const r = await seedRepoFacts({ config: { lang: 'en' }, repoRoot, kitDir: KIT_DIR, dryRun: true });
+  assert.equal(r.ok, true);
+  assert.deepEqual(readdirSync(repoRoot), []);
+  assert.match(r.evidence.join('\n'), /serpens\/branching\.md/);
 });

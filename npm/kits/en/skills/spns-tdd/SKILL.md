@@ -1,6 +1,6 @@
 ---
 name: spns-tdd
-description: Tiered test-driven development against the repository's own testing stack. Use for ALL implementation work.
+description: Tiered test-driven development against the repository's own testing stack. Use for implementation work on a Serpens change (spns-* commands or a change with `.serpens.yaml`).
 serpens-version: 2026-09-21.1
 ---
 ## Iron law
@@ -12,7 +12,7 @@ FAST tier — the inner loop, run after EVERY green step, must stay in seconds.
 SLOW tier — run at TASK boundaries and before the PR, never inside the micro-loop.
 
 Which test is which, and the command that runs each tier, are facts about THIS repository, not
-about this skill. Read `docs/testing-stack.md` in the repository and follow it. If that file does
+about this skill. Read `serpens/testing-stack.md` in the repository and follow it. If that file does
 not exist, or the facts you need from it are incomplete, stop and ask the team once, then write
 it from `templates/testing-stack.md` — never guess a framework or invent a harness class. A file
 that exists but answers nothing is the same problem as no file at all; `<serpens-sdd>

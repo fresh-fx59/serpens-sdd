@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // No serpens-version stamp: this file ships in the npm package, whose version IS its edition.
 // serpens-lint.mjs — deterministic disposer for agent-written docs. Zero dependencies.
-// Scope: openspec/, docs/, and the agent home of whatever CLI this port runs
+// Scope: openspec/, serpens/, and the agent home of whatever CLI this port runs
 // (never lints build output or source code docs). The agent home is NEVER hard-coded:
 // it is SERPENS_AGENT_DIR, else `git config serpens.agentDir`, else the one dot-directory at the
 // repository root that contains a `skills/` subdirectory. Root instruction files
@@ -13,6 +13,8 @@
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
 import { join, dirname, resolve, relative, sep } from 'node:path';
+import { LAYOUT, SERPENS_DIR, HARD_RULE_MARKER } from '../src/layout.mjs';
+import { isOwnedChange } from '../src/ownership.mjs';
 
 // Root resolution: an explicit positional root always wins. With none given, fall back to the
 // git worktree root (like check-openspec-root.sh and repository-state.sh), never the bare
@@ -46,7 +48,10 @@ function discoverAgentDir() {
   return found[0] ?? '';
 }
 const AGENT_DIR = discoverAgentDir();
-const SCOPES = ['openspec', 'docs', AGENT_DIR].filter(Boolean)
+// `serpens/`, not `docs/`: this kit owns exactly one directory, and a team's own `docs/` tree is
+// none of our business — putting it under our line caps was an accident of where our one
+// document used to sit.
+const SCOPES = ['openspec', SERPENS_DIR, AGENT_DIR].filter(Boolean)
   .map(d => join(ROOT, d)).filter(existsSync);
 
 // Root instruction files (the port's AGENTS.md analogue, under whatever name it uses).
@@ -58,7 +63,7 @@ const rootDocs = readdirSync(ROOT, { withFileTypes: true })
 
 // ---- hardcoded caps (lines). The write-boundary contract: exceed => rejected, never trimmed.
 const CAPS = [
-  [/(^|\/)openspec\/index\.md$/, 300],
+  [new RegExp(`(^|/)${LAYOUT.indexMd.replaceAll('.', '\\.')}$`), 300],
   [/(^|\/)openspec\/specs\/.+\/spec\.md$/, 400],
   [/(^|\/)openspec\/changes\/.+\/tasks\.md$/, 200],
   [/(^|\/)openspec\/changes\/.+\/research\.md$/, 400],
@@ -83,6 +88,73 @@ function* walk(dir) {
 }
 const rel = p => relative(ROOT, p).split(sep).join('/');
 const mdFiles = [...SCOPES.flatMap(s => [...walk(s)]).filter(p => p.endsWith('.md')), ...rootDocs];
+
+// ---- ownership scoping (gap 1, serpens-openspec-coexistence-gaps-2026-09-22.md, step 3).
+// Before this, every check below judged EVERY dir under openspec/changes/ the same way — a
+// hand-made (vanilla) OpenSpec change with no `## Why` or no state header went red exactly like
+// one of ours. Change-level rules now apply only to a MARKED change dir (`.serpens.yaml`,
+// `owner: serpens-sdd` — src/ownership.mjs). An unmarked one is silently skipped by each check
+// below and counted once, reported as a single WARN line at the end — never an error.
+const changesRootDir = join(ROOT, 'openspec', 'changes');
+const activeChangeIds = existsSync(changesRootDir)
+  ? readdirSync(changesRootDir, { withFileTypes: true })
+      .filter(e => e.isDirectory() && e.name !== 'archive')
+      .map(e => e.name)
+  : [];
+const unmarkedChangeIds = activeChangeIds.filter(id => !isOwnedChange(join(changesRootDir, id)));
+
+// True iff the `openspec/changes/<id>/...` (or `openspec/changes/archive/<id>/...`) relative
+// path `r` belongs to a MARKED change. A path outside `openspec/changes/` is not this question's
+// business and answers false (callers only ask it after already matching a changes/ regex).
+function isChangeOwnedByRelPath(r) {
+  let m = r.match(/^openspec\/changes\/archive\/([^/]+)\//);
+  if (m) return isOwnedChange(join(changesRootDir, 'archive', m[1]));
+  m = r.match(/^openspec\/changes\/([^/]+)\//);
+  if (m && m[1] !== 'archive') return isOwnedChange(join(changesRootDir, m[1]));
+  return false;
+}
+
+// Which capabilities a MARKED change (active or archived) touches, via its specs/<cap>/*.md
+// delta files. Main-spec caps and the index<->spec bijection stay ERRORS only for these; every
+// other capability downgrades to WARN, so a vanilla `openspec archive` commit that happens to
+// update a main spec we never asked about does not go red on our gate.
+function touchedCapabilitiesSet() {
+  const caps = new Set();
+  const dirs = activeChangeIds.map(id => join(changesRootDir, id));
+  const archiveDir = join(changesRootDir, 'archive');
+  if (existsSync(archiveDir)) {
+    for (const e of readdirSync(archiveDir, { withFileTypes: true })) {
+      if (e.isDirectory()) dirs.push(join(archiveDir, e.name));
+    }
+  }
+  for (const d of dirs) {
+    if (!isOwnedChange(d)) continue;
+    const specsSubdir = join(d, 'specs');
+    if (!existsSync(specsSubdir)) continue;
+    for (const f of walk(specsSubdir)) {
+      if (!f.endsWith('.md')) continue;
+      const capRel = relative(specsSubdir, dirname(f)).split(sep).join('/');
+      if (capRel && capRel !== '.') caps.add(capRel);
+    }
+  }
+  return caps;
+}
+const touchedCapabilities = touchedCapabilitiesSet();
+
+// ---- root instruction files: only the HARD RULE block we ourselves appended is in scope, never
+// the rest of a team's own file (gap 1 correction: a team's CLAUDE.md used to be linted whole).
+const rootDocSet = new Set(rootDocs);
+function extractHardRuleBlock(text) {
+  const idx = text.indexOf(HARD_RULE_MARKER);
+  if (idx === -1) return '';
+  const after = text.slice(idx + HARD_RULE_MARKER.length);
+  const m = after.match(/\n##\s+/);
+  return m ? text.slice(idx, idx + HARD_RULE_MARKER.length + m.index) : text.slice(idx);
+}
+function scopedRead(p) {
+  const text = readFileSync(p, 'utf8');
+  return rootDocSet.has(p) ? extractHardRuleBlock(text) : text;
+}
 
 // GitHub-style anchor slug. Unicode-aware on purpose: `\w` is ASCII-only, so a Cyrillic
 // heading used to slug to the empty string and EVERY Russian anchor was reported broken.
@@ -109,17 +181,28 @@ const fenceMask = lines => {
 // ---- 1. caps
 for (const p of mdFiles) {
   const r = rel(p);
+  // Change-level caps (tasks.md/research.md/proposal.md under openspec/changes/, active or
+  // archived) apply only to a marked change — see the ownership scoping above.
+  if (/^openspec\/changes\//.test(r) && !isChangeOwnedByRelPath(r)) continue;
   for (const [re, cap] of CAPS) {
     if (re.test(r)) {
       const lines = readFileSync(p, 'utf8').split('\n').length;
-      if (lines > cap) err(r, `${lines} lines (hard cap ${cap})`,
-        `split content into references/ subfiles or tighten; caps are rejected-not-trimmed by design`);
+      if (lines > cap) {
+        const mainSpecMatch = r.match(/^openspec\/specs\/(.+)\/spec\.md$/);
+        if (mainSpecMatch && !touchedCapabilities.has(mainSpecMatch[1])) {
+          warn(r, `${lines} lines (hard cap ${cap}) — untouched by any Serpens-marked change`,
+            'no marked change touches this capability, so this stays advisory; a vanilla openspec archive commit is not blocked by it');
+          continue;
+        }
+        err(r, `${lines} lines (hard cap ${cap})`,
+          `split content into references/ subfiles or tighten; caps are rejected-not-trimmed by design`);
+      }
     }
   }
 }
 
-// ---- 2. index.json schema + bijection with openspec/specs/ (a capability = a dir WITH spec.md)
-const idxPath = join(ROOT, 'openspec', 'index.json');
+// ---- 2. serpens/index.json schema + bijection with openspec/specs/ (a capability = a dir WITH spec.md)
+const idxPath = join(ROOT, LAYOUT.indexJson);
 const specsDir = join(ROOT, 'openspec', 'specs');
 // A capability is a DIRECTORY CONTAINING spec.md, identified by its path relative to
 // openspec/specs/ with forward slashes — `user-auth`, or `identity/user-auth`.
@@ -166,42 +249,50 @@ for (const d of emptyDirs) {
 if (existsSync(idxPath)) {
   let idx;
   try { idx = JSON.parse(readFileSync(idxPath, 'utf8')); }
-  catch (e) { err('openspec/index.json', `invalid JSON: ${e.message}`, 'regenerate: serpens-sdd index'); }
+  catch (e) { err(LAYOUT.indexJson, `invalid JSON: ${e.message}`, 'regenerate: serpens-sdd index'); }
   if (idx) {
     const allowed = new Set(['schema_version', 'repo', 'source_digest', 'capabilities', 'modules']);
     for (const k of Object.keys(idx)) if (!allowed.has(k))
-      err('openspec/index.json', `unknown key "${k}"`, 'schema forbids extra keys (pollution gate); regenerate');
+      err(LAYOUT.indexJson, `unknown key "${k}"`, 'schema forbids extra keys (pollution gate); regenerate');
     for (const k of ['schema_version', 'repo', 'source_digest', 'capabilities']) if (!(k in idx))
-      err('openspec/index.json', `missing required key "${k}"`, 'regenerate: serpens-sdd index');
+      err(LAYOUT.indexJson, `missing required key "${k}"`, 'regenerate: serpens-sdd index');
     if (typeof idx.repo === 'string' && idx.repo.length > 80)
-      err('openspec/index.json', 'repo name >80 chars', 'shorten openspec/repo.txt');
+      err(LAYOUT.indexJson, 'repo name >80 chars', `shorten ${LAYOUT.repoTxt}`);
     const ids = new Set();
     for (const c of idx.capabilities ?? []) {
       for (const k of ['id', 'title', 'path', 'summary']) if (!(k in c))
-        err('openspec/index.json', `capability missing "${k}"`, 'regenerate');
+        err(LAYOUT.indexJson, `capability missing "${k}"`, 'regenerate');
       // Kebab-case per PATH SEGMENT, slashes allowed between them: `identity/user-auth` is the
       // nested form OpenSpec's own proposal template recommends, and the old single-segment
       // pattern rejected it outright.
       if (c.id && !/^[a-z0-9]+(-[a-z0-9]+)*(\/[a-z0-9]+(-[a-z0-9]+)*)*$/.test(c.id))
-        err('openspec/index.json', `capability id "${c.id}" is not kebab-case path segments`,
+        err(LAYOUT.indexJson, `capability id "${c.id}" is not kebab-case path segments`,
           'rename each spec dir segment to kebab-case (e.g. identity/user-auth)');
       if (c.summary && c.summary.length > 200)
-        err('openspec/index.json', `summary for "${c.id}" >200 chars`, 'first paragraph of the spec is the summary; shorten it');
+        err(LAYOUT.indexJson, `summary for "${c.id}" >200 chars`, 'first paragraph of the spec is the summary; shorten it');
       ids.add(c.id);
     }
-    for (const d of capDirs) if (!ids.has(d))
-      err('openspec/index.json', `spec dir "${d}" missing from index`, 'regenerate: serpens-sdd index && git add openspec/index.*');
-    for (const id of ids) if (!capDirs.includes(id))
-      err('openspec/index.json', `index lists "${id}" but openspec/specs/${id}/spec.md does not exist`, 'regenerate the index');
+    for (const d of capDirs) if (!ids.has(d)) {
+      const hint = `regenerate: serpens-sdd index && git add ${SERPENS_DIR}/index.*`;
+      if (touchedCapabilities.has(d)) err(LAYOUT.indexJson, `spec dir "${d}" missing from index`, hint);
+      else warn(LAYOUT.indexJson, `spec dir "${d}" missing from index — untouched by any Serpens-marked change`, hint);
+    }
+    for (const id of ids) if (!capDirs.includes(id)) {
+      const msg = `index lists "${id}" but openspec/specs/${id}/spec.md does not exist`;
+      if (touchedCapabilities.has(id)) err(LAYOUT.indexJson, msg, 'regenerate the index');
+      else warn(LAYOUT.indexJson, `${msg} — untouched by any Serpens-marked change`, 'regenerate the index');
+    }
   }
 } else if (capDirs.length) {
-  err('openspec/index.json', 'missing but specs exist', 'generate: serpens-sdd index');
+  err(LAYOUT.indexJson, 'missing but specs exist', 'generate: serpens-sdd index');
 }
 
 // ---- 3. relative links + anchors (skip external, skip code/comments)
+// A root instruction file (a team's own CLAUDE.md/AGENTS.md/…) is scoped to the HARD RULE block
+// we appended (scopedRead) — never the rest of the file, which is theirs (gap 1 correction).
 for (const p of mdFiles) {
   const r = rel(p);
-  const txt = stripCode(readFileSync(p, 'utf8'));
+  const txt = stripCode(scopedRead(p));
   for (const m of txt.matchAll(/\[[^\]]*\]\(([^)\s]+)\)/g)) {
     const target = m[1];
     if (/^(https?:|mailto:|#)/.test(target)) continue;
@@ -221,7 +312,7 @@ for (const p of mdFiles) {
 // ---- 4. embedded snippets: <!-- embed: path#L3-L5 --> followed by a fence whose body must equal those lines
 for (const p of mdFiles) {
   const r = rel(p);
-  const lines = readFileSync(p, 'utf8').split('\n');
+  const lines = scopedRead(p).split('\n');
   const inFence = fenceMask(lines);
   for (let i = 0; i < lines.length; i++) {
     if (inFence[i]) continue; // fenced examples are not directives
@@ -260,6 +351,7 @@ for (const p of mdFiles) {
 // change passes every gate and nobody can read it. That gap is ours to close.
 for (const p of mdFiles.filter(p => /(^|\/)openspec\/changes\/[^/]+\/proposal\.md$/.test(rel(p)))) {
   const r = rel(p);
+  if (!isChangeOwnedByRelPath(r)) continue; // unmarked (vanilla) change — not ours to judge
   const body = stripCode(readFileSync(p, 'utf8'));
   if (!/^##\s+Why\s*$/im.test(body))
     err(r, 'no "## Why" section',
@@ -274,7 +366,7 @@ for (const p of mdFiles.filter(p => /(^|\/)openspec\/changes\/[^/]+\/proposal\.m
 // instruction filename, the pinned CLI invocation, the store and repository ids — and until now
 // nothing ever read it, so an install could run to completion on a file that still said "...".
 {
-  const pf = join(ROOT, 'port-facts.md');
+  const pf = join(ROOT, LAYOUT.portFacts);
   if (existsSync(pf)) {
     const r = relative(ROOT, pf).split(sep).join('/');
     const txt = readFileSync(pf, 'utf8');
@@ -318,6 +410,7 @@ for (const p of mdFiles.filter(p => /(^|\/)openspec\/changes\/[^/]+\/proposal\.m
     for (const e of readdirSync(changesDir, { withFileTypes: true })) {
       if (!e.isDirectory() || e.name === 'archive') continue;
       const changeAbs = join(changesDir, e.name);
+      if (!isOwnedChange(changeAbs)) continue; // unmarked (vanilla) change — not ours to judge
       const changeRel = `openspec/changes/${e.name}`;
       const yamlPath = join(changeAbs, '.openspec.yaml');
       const skipSpecs = existsSync(yamlPath)
@@ -340,6 +433,7 @@ for (const p of mdFiles.filter(p => /(^|\/)openspec\/changes\/[^/]+\/proposal\.m
 // ---- 5. tasks.md state header + checkbox shape (nesting allowed)
 for (const p of mdFiles.filter(p => /(^|\/)openspec\/changes\/[^/]+\/tasks\.md$/.test(rel(p)))) {
   const r = rel(p);
+  if (!isChangeOwnedByRelPath(r)) continue; // unmarked (vanilla) change — not ours to judge
   const head = readFileSync(p, 'utf8').split('\n').slice(0, 5).join('\n');
   if (!/^As of \d{4}-\d{2}-\d{2} — .+/m.test(head))
     err(r, 'missing state header in first 5 lines', 'add a line: "As of YYYY-MM-DD — stage N, next: <action>" (overwrite it each session)');
@@ -367,6 +461,7 @@ for (const p of mdFiles.filter(p => /(^|\/)openspec\/changes\/[^/]+\/tasks\.md$/
 const DELTA_SECTION = /^##\s+(ADDED|MODIFIED|REMOVED|RENAMED)\s+Requirements\s*$/im;
 for (const p of mdFiles.filter(p => /(^|\/)openspec\/changes\/[^/]+\/specs\/.+\.md$/.test(rel(p)))) {
   const r = rel(p);
+  if (!isChangeOwnedByRelPath(r)) continue; // unmarked (vanilla) change — not ours to judge
   const txt = readFileSync(p, 'utf8');
   const body = stripCode(txt);
   // No delta section at all is an openspec ERROR ("No delta sections found …"); nothing to add here.
@@ -456,6 +551,10 @@ for (const p of mdFiles.filter(p => /(^|\/)openspec\/changes\/[^/]+\/specs\/.+\.
 }
 
 // ---- report
+if (unmarkedChangeIds.length)
+  warn('openspec/changes/', `${unmarkedChangeIds.length} unmarked change(s) ignored`,
+    `these are hand-made OpenSpec changes with no ${LAYOUT.changeMarker} (${unmarkedChangeIds.join(', ')}) — `
+    + 'mark one with `serpens-sdd state mark-change <id> --ticket <T>` to bring it under Serpens checks');
 if (warns.length) console.log(`warnings (${warns.length}):\n${warns.join('\n')}\n`);
 if (errors.length) {
   console.log(`errors (${errors.length}):\n${errors.join('\n')}\n\n✗ serpens-lint failed`);

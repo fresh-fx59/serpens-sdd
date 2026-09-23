@@ -16,11 +16,18 @@ function makeRepo() {
   const dir = mkdtempSync(join(tmpdir(), 'serpens-sdd-branch-contract-'));
   execFileSync('git', ['init', '--quiet', '-b', 'main'], { cwd: dir });
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '--quiet', '--allow-empty', '-m', 'init'], { cwd: dir });
+  // Stage a Serpens-owned path so check-git-naming.sh's ownership gate (gap 1,
+  // serpens-openspec-coexistence-gaps-2026-09-22.md, step 3) treats this fixture as Serpens
+  // work — this suite exercises the NAMING CONTRACT itself; the ownership gate that decides
+  // WHETHER to enforce it at all is covered separately by tests/git-naming-ownership-test.sh.
+  mkdirSync(join(dir, 'serpens'), { recursive: true });
+  writeFileSync(join(dir, 'serpens', '.ownership-fixture'), 'x\n', 'utf8');
+  execFileSync('git', ['-C', dir, 'add', 'serpens/.ownership-fixture']);
   return dir;
 }
 
 function writeConventions(repoRoot, body) {
-  const dir = join(repoRoot, 'conventions');
+  const dir = join(repoRoot, 'serpens');
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'branching.md'), body, 'utf8');
 }
@@ -137,7 +144,7 @@ test('malformed conventions file: wrong table column count is a fatal error nami
   ].join('\n'));
   const result = await gitNaming(['--branch', 'feature/ABCD-1234'], repo);
   assert.equal(result.code, 1);
-  assert.match(result.stderr, /conventions[/\\]branching\.md:2:/);
+  assert.match(result.stderr, /serpens[/\\]branching\.md:2:/);
   assert.match(result.stderr, /row has 3 column\(s\), expected 2/);
 });
 
@@ -151,7 +158,7 @@ test('malformed conventions file: an invalid ticket-pattern regex is a fatal, na
   ].join('\n'));
   const result = await gitNaming(['--branch', 'feature/ABCD-1234'], repo);
   assert.equal(result.code, 1);
-  assert.match(result.stderr, /conventions[/\\]branching\.md:2:/);
+  assert.match(result.stderr, /serpens[/\\]branching\.md:2:/);
   assert.match(result.stderr, /not a valid regular expression/);
 });
 
@@ -173,7 +180,8 @@ test('malformed conventions file: a branch-pattern missing the <TICKET> placehol
 test('repository-state.sh assert-change ALSO reads the conventions file: expected branch follows the configured pattern, not the hardcoded feature/', async () => {
   const repo = makeRepo();
   mkdirSync(join(repo, 'openspec', 'changes'), { recursive: true });
-  writeFileSync(join(repo, 'openspec', 'repo.txt'), 'svc\n', 'utf8');
+  mkdirSync(join(repo, 'serpens'), { recursive: true });
+  writeFileSync(join(repo, 'serpens', 'repo.txt'), 'svc\n', 'utf8');
   execFileSync('git', ['add', '.'], { cwd: repo });
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '--quiet', '-m', 'onboard'], { cwd: repo });
   writeConventions(repo, RELEASE_UNDERSCORE_CONTRACT);
@@ -196,7 +204,8 @@ test('repository-state.sh assert-change ALSO reads the conventions file: expecte
 test('repository-state.sh assert-change: an invalid ticket under the configured ticket-pattern is refused before any branch check', async () => {
   const repo = makeRepo();
   mkdirSync(join(repo, 'openspec', 'changes'), { recursive: true });
-  writeFileSync(join(repo, 'openspec', 'repo.txt'), 'svc\n', 'utf8');
+  mkdirSync(join(repo, 'serpens'), { recursive: true });
+  writeFileSync(join(repo, 'serpens', 'repo.txt'), 'svc\n', 'utf8');
   execFileSync('git', ['add', '.'], { cwd: repo });
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '--quiet', '-m', 'onboard'], { cwd: repo });
   writeConventions(repo, RELEASE_UNDERSCORE_CONTRACT);
@@ -210,7 +219,18 @@ test('repository-state.sh assert-change: an invalid ticket under the configured 
 test('ONE contract: changing branch-pattern in the conventions file changes BOTH guards together', async () => {
   const repo = makeRepo();
   mkdirSync(join(repo, 'openspec', 'changes'), { recursive: true });
-  writeFileSync(join(repo, 'openspec', 'repo.txt'), 'svc\n', 'utf8');
+  mkdirSync(join(repo, 'serpens'), { recursive: true });
+  writeFileSync(join(repo, 'serpens', 'repo.txt'), 'svc\n', 'utf8');
+  // Two markers, one per branch this test checks out below: check-git-naming.sh's ownership
+  // gate (step 3) accepts a branch a marker names even with nothing staged, and this test needs
+  // BOTH the naming CONTRACT check and repository-state.sh's assert-change (which refuses any
+  // tracked-but-uncommitted change) to stay enforced across the whole scenario.
+  mkdirSync(join(repo, 'openspec', 'changes', 'rel'), { recursive: true });
+  writeFileSync(join(repo, 'openspec', 'changes', 'rel', '.serpens.yaml'),
+    '# serpens-sdd:change-marker\nowner: serpens-sdd\nbranch: release/abc_123\n', 'utf8');
+  mkdirSync(join(repo, 'openspec', 'changes', 'hot'), { recursive: true });
+  writeFileSync(join(repo, 'openspec', 'changes', 'hot', '.serpens.yaml'),
+    '# serpens-sdd:change-marker\nowner: serpens-sdd\nbranch: hotfix/abc_123\n', 'utf8');
   execFileSync('git', ['add', '.'], { cwd: repo });
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '--quiet', '-m', 'onboard'], { cwd: repo });
 
@@ -337,7 +357,8 @@ test('D1 repro 3: an incomplete commit subject no longer matches via the second 
 test('D1: repository-state.sh assert-change ALSO groups an alternation ticket-pattern (not just check-git-naming.sh)', async () => {
   const repo = makeRepo();
   mkdirSync(join(repo, 'openspec', 'changes'), { recursive: true });
-  writeFileSync(join(repo, 'openspec', 'repo.txt'), 'svc\n', 'utf8');
+  mkdirSync(join(repo, 'serpens'), { recursive: true });
+  writeFileSync(join(repo, 'serpens', 'repo.txt'), 'svc\n', 'utf8');
   execFileSync('git', ['add', '.'], { cwd: repo });
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', 'commit', '--quiet', '-m', 'onboard'], { cwd: repo });
   writeConventions(repo, ALTERNATION_CONTRACT);
@@ -403,7 +424,7 @@ test('D1: a ticket-pattern containing a literal (escaped) ^ still anchors correc
 
 // ---- D2: an explicitly-named conventions file must never silently fall back to defaults ------
 // spec-org-facts-slice-branching-2026-09-11.md §7, D2. "File present but no anchor" means
-// UNCONFIGURED only for the DEFAULT <repo-root>/conventions/branching.md path — because
+// UNCONFIGURED only for the DEFAULT <repo-root>/serpens/branching.md path — because
 // src/stages/stage3-store.mjs installs that exact unfilled prose template on every install. An
 // explicitly-named file (--conventions or SERPENS_SDD_CONVENTIONS_BRANCHING) with no valid
 // anchor — including one whose anchor name is misspelled, which never matches the anchor regex
@@ -454,7 +475,7 @@ test('D2 case 2b: SERPENS_SDD_CONVENTIONS_BRANCHING also counts as explicit prov
   rmSync(elsewhere, { recursive: true, force: true });
 });
 
-test('D2 case 3: the DEFAULT conventions/branching.md path with NO anchor at all is still silently UNCONFIGURED (unchanged)', async () => {
+test('D2 case 3: the DEFAULT serpens/branching.md path with NO anchor at all is still silently UNCONFIGURED (unchanged)', async () => {
   const repo = makeRepo();
   writeConventions(repo, '# just prose, no anchor — the shipped, unfilled template\n');
   const result = await gitNaming(['--branch', 'release/abc_123'], repo);
@@ -462,7 +483,7 @@ test('D2 case 3: the DEFAULT conventions/branching.md path with NO anchor at all
   assert.match(result.stdout, /UNCHECKED/);
 });
 
-test('D2 case 4: the DEFAULT conventions/branching.md path with an anchor present but broken inside is still fatal (unchanged)', async () => {
+test('D2 case 4: the DEFAULT serpens/branching.md path with an anchor present but broken inside is still fatal (unchanged)', async () => {
   const repo = makeRepo();
   writeConventions(repo, [
     '<!-- serpens:section branching-contract -->',
@@ -471,5 +492,83 @@ test('D2 case 4: the DEFAULT conventions/branching.md path with an anchor presen
   ].join('\n'));
   const result = await gitNaming(['--branch', 'feature/ABCD-1234'], repo);
   assert.equal(result.code, 1, 'a present anchor with a broken body must already be fatal, with or without provenance');
+  assert.match(result.stderr, /required field `branch-pattern` is missing/);
+});
+
+// ---- --print-contract: the mode the KIT PROMPTS read ------------------------------------------
+// The prompts used to restate `feature/<TICKET>` and `feat(<TICKET>): <text>` in their own prose,
+// which is a second, unenforced copy of this contract: configure release/<TICKET> and the hooks
+// accept it while the prompts still tell the agent to build feature/. The prompts now ASK. These
+// tests pin the answer's shape, because a prompt cannot assert on it.
+
+function contractFields(stdout) {
+  const out = {};
+  for (const line of stdout.split('\n').filter(Boolean)) {
+    const i = line.indexOf('\t');
+    assert.notEqual(i, -1, `--print-contract line is not key<TAB>value: ${JSON.stringify(line)}`);
+    out[line.slice(0, i)] = line.slice(i + 1);
+  }
+  return out;
+}
+
+test('--print-contract with no conventions file reports the built-in shape, and says so', async () => {
+  const repo = makeRepo();
+  const result = await gitNaming(['--print-contract'], repo);
+  assert.equal(result.code, 0);
+  const f = contractFields(result.stdout);
+  assert.match(f.source, /^built-in defaults \(no branching-contract block at .*serpens\/branching\.md\)$/);
+  assert.equal(f['branch-pattern'], 'feature/<TICKET>');
+  assert.equal(f['ticket-pattern'], '[A-Z][A-Z0-9]+-[0-9]+');
+  assert.equal(f['commit-form'], '<type>(<TICKET>): <text>');
+  assert.equal(f['commit-types'], 'feat, fix, chore, docs, refactor, test, perf, build, ci, revert');
+  assert.equal(f['branch-example'], 'feature/ABCD-1234');
+  assert.equal(f['commit-example'], 'feat(ABCD-1234): commit message text');
+  assert.equal(f['exempt-branches'], '^(main|master|develop)$');
+});
+
+test('--print-contract follows a configured contract, so a shop that changes the file changes the prompts', async () => {
+  const repo = makeRepo();
+  writeConventions(repo, RELEASE_UNDERSCORE_CONTRACT);
+  const result = await gitNaming(['--print-contract', 'abc_12'], repo);
+  assert.equal(result.code, 0);
+  const f = contractFields(result.stdout);
+  assert.match(f.source, /serpens\/branching\.md$/);
+  assert.equal(f['branch-pattern'], 'release/<TICKET>');
+  assert.equal(f['branch-example'], 'release/abc_12');
+  assert.equal(f['commit-example'], 'feat(abc_12): commit message text');
+});
+
+test('--print-contract prints the branch name the branch check will then ACCEPT', async () => {
+  const repo = makeRepo();
+  writeConventions(repo, RELEASE_UNDERSCORE_CONTRACT);
+  const printed = await gitNaming(['--print-contract', 'abc_12'], repo);
+  const branch = contractFields(printed.stdout)['branch-example'];
+  const checked = await gitNaming(['--branch', branch], repo);
+  assert.equal(checked.code, 0, `--print-contract offered '${branch}' and --branch rejected it: ${checked.stderr}`);
+});
+
+test('--print-contract omits an example rather than printing one the contract rejects', async () => {
+  const repo = makeRepo();
+  writeConventions(repo, RELEASE_UNDERSCORE_CONTRACT); // ticket is [a-z]+_[0-9]+ — ABCD-1234 cannot match
+  const result = await gitNaming(['--print-contract'], repo);
+  assert.equal(result.code, 0);
+  const f = contractFields(result.stdout);
+  assert.match(f['branch-example'], /^\(none/, 'a sample that the check would reject must never be printed');
+  assert.match(f['commit-example'], /^\(none/);
+});
+
+test('--print-contract rejects a ticket that does not match the pattern in force', async () => {
+  const repo = makeRepo();
+  const result = await gitNaming(['--print-contract', 'not-a-ticket'], repo);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /ticket 'not-a-ticket' does not match the ticket pattern in force/);
+  assert.match(result.stderr, /\[A-Z\]\[A-Z0-9\]\+-\[0-9\]\+/);
+});
+
+test('--print-contract reports a malformed conventions file as the same fatal, named error the guards do', async () => {
+  const repo = makeRepo();
+  writeConventions(repo, ['<!-- serpens:section branching-contract -->', '| `ticket-pattern` | X |', ''].join('\n'));
+  const result = await gitNaming(['--print-contract'], repo);
+  assert.equal(result.code, 1, 'the prompts must not be handed defaults while the hooks refuse to run');
   assert.match(result.stderr, /required field `branch-pattern` is missing/);
 });

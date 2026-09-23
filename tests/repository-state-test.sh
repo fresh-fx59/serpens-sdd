@@ -386,6 +386,49 @@ else
 fi
 rm -rf "$NR"
 
+echo "T22 mark-change writes the marker"
+MC=$(mktemp -d)
+G init -q "$MC/repo"; G -C "$MC/repo" config user.email t@t.t; G -C "$MC/repo" config user.name t
+G -C "$MC/repo" checkout -q -b feature/DEMO-1
+mkdir -p "$MC/repo/openspec/changes/demo-1"
+printf 'schema: 1\n' > "$MC/repo/openspec/changes/demo-1/.openspec.yaml"
+G -C "$MC/repo" add openspec; G -C "$MC/repo" commit -qm init
+out=$(bash "$SCRIPT" mark-change demo-1 --ticket DEMO-1 --repo "$MC/repo" 2>&1); rc=$?
+marker="$MC/repo/openspec/changes/demo-1/.serpens.yaml"
+if [ "$rc" -eq 0 ] && [ -f "$marker" ] \
+  && grep -q '^owner: serpens-sdd$' "$marker" \
+  && grep -q '^ticket: DEMO-1$' "$marker" \
+  && grep -q '^branch: feature/DEMO-1$' "$marker"; then
+  ok "mark-change writes owner/ticket/branch"
+else
+  no "mark-change did not write the expected marker (rc=$rc)" "$out"
+fi
+
+echo "T23 mark-change is idempotent"
+out2=$(bash "$SCRIPT" mark-change demo-1 --ticket DEMO-1 --repo "$MC/repo" 2>&1); rc2=$?
+if [ "$rc2" -eq 0 ] && grep -q '^ticket: DEMO-1$' "$marker"; then
+  ok "second run is a no-op"
+else
+  no "second run failed or changed the ticket (rc=$rc2)" "$out2"
+fi
+
+echo "T24 mark-change refuses to overwrite a marker with a different ticket"
+out3=$(bash "$SCRIPT" mark-change demo-1 --ticket OTHR-9 --repo "$MC/repo" 2>&1); rc3=$?
+if [ "$rc3" -eq 1 ] && grep -q '^ticket: DEMO-1$' "$marker"; then
+  ok "mismatched ticket refused, file untouched"
+else
+  no "mismatched ticket was not refused cleanly (rc=$rc3)" "$out3"
+fi
+
+echo "T25 mark-change refuses a missing change directory"
+out4=$(bash "$SCRIPT" mark-change nope-1 --ticket DEMO-1 --repo "$MC/repo" 2>&1); rc4=$?
+if [ "$rc4" -eq 2 ]; then
+  ok "missing change dir exits 2"
+else
+  no "missing change dir did not exit 2 (rc=$rc4)" "$out4"
+fi
+rm -rf "$MC"
+
 echo
 echo "PASS=$PASS FAIL=$FAIL"
 [ "$FAIL" -eq 0 ]

@@ -110,7 +110,7 @@ test('the canonical flag wins over its alias when both are given', async () => {
 
 test('serpens_sdd.invocation defaults to the generated shim, and a flag or config overrides it', async () => {
   // The install-wide contract: with nothing configured, every installed command and skill calls
-  // `<repo>/tools/serpens-sdd` — the same string stage 5 writes into the hooks. A bare `serpens-sdd`
+  // `<repo>/serpens/bin/serpens-sdd` — the same string stage 5 writes into the hooks. A bare `serpens-sdd`
   // would be a call route no devDependency or `npx` install has.
   const d = await resolveInputs({ ...base, tty: false, argv: ['--project', 'p'] });
   assert.equal(d.value.serpens_sdd.invocation, SHIM_INVOCATION);

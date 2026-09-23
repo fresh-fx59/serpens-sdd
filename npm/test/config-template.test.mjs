@@ -44,3 +44,12 @@ test('configTemplate shows every field spec §4 documents, including port_scope 
     assert.ok(key in parsed.store, `template's store is missing ${key}`);
   }
 });
+
+test('the repo-local template (step 6) is valid, has repo: and no store:/repositories: keys', () => {
+  const parsed = JSON.parse(configTemplate('en', { topology: 'repo-local' }));
+  assert.equal(parsed.topology, 'repo-local');
+  assert.equal('store' in parsed, false);
+  assert.equal('repositories' in parsed, false);
+  const r = validateConfig(parsed, { checkoutRoot: process.cwd(), resolveFrom: process.cwd() });
+  assert.deepEqual(r.errors, []);
+});

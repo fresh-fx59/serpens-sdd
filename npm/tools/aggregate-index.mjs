@@ -5,11 +5,28 @@
 import { readFileSync, writeFileSync, existsSync, realpathSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { execFileSync } from 'node:child_process';
+import { LAYOUT } from '../src/layout.mjs';
 
 const STRICT = process.argv.includes('--strict');
 const rootArg = process.argv.slice(2).find(a => !a.startsWith('--')) ?? '.';
 const ROOT = realpathSync(resolve(rootArg));
 const modulesPath = join(ROOT, '.gitmodules');
+
+// Repo-local topology (step 6, gap 3): one repository, no system store, so there is no catalog
+// to build. `serpens/topology` is read (not the config file, which is absent at hook time) at
+// ROOT and at ROOT's git top-level, and the tool refuses instead of writing a phantom catalog.
+function isRepoLocal(dir) {
+  const p = join(dir, LAYOUT.topology);
+  return existsSync(p) && readFileSync(p, 'utf8').trim() === 'repo-local';
+}
+let topLevel = ROOT;
+try {
+  topLevel = execFileSync('git', ['-C', ROOT, 'rev-parse', '--show-toplevel'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
+} catch { /* not a git repository: ROOT alone is checked */ }
+if (isRepoLocal(ROOT) || isRepoLocal(topLevel)) {
+  console.error(`✗ catalog: ${topLevel} is a repo-local install (${LAYOUT.topology} = repo-local) — there is no system store and no submodules, so there is no catalog to build. Its own index is serpens/index.json (serpens-sdd index).`);
+  process.exit(2);
+}
 
 function gitConfig(pattern) {
   if (!existsSync(modulesPath)) return '';
@@ -67,10 +84,10 @@ const entries = [], red = [];
 const byName = (a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0); // byte-wise, locale-independent
 for (const r of [...repos].sort(byName)) {
   const repoDir = join(ROOT, r.path);
-  const idxPath = join(repoDir, 'openspec', 'index.json');
+  const idxPath = join(repoDir, LAYOUT.indexJson);
   try {
     if (!existsSync(repoDir)) throw new Error('submodule missing — run serpens-sdd sync-submodules');
-    if (!existsSync(idxPath)) throw new Error('openspec/index.json missing — repo not onboarded or index not generated');
+    if (!existsSync(idxPath)) throw new Error(`${LAYOUT.indexJson} missing — repo not onboarded or index not generated`);
     const idx = JSON.parse(readFileSync(idxPath, 'utf8'));
     if (!Array.isArray(idx.capabilities)) throw new Error('index.json has no capabilities[] — regenerate in the repo');
     const head = execFileSync('git', ['-C', repoDir, 'rev-parse', '--short', 'HEAD'], { encoding: 'utf8' }).trim();

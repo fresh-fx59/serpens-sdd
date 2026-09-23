@@ -184,7 +184,7 @@ test('the shipped kit names no technology the customer chose', () => {
   assert.deepEqual(hits, [],
     `\nThe shipped kit names ${hits.length} customer technolog${hits.length === 1 ? 'y' : 'ies'}.\n`
     + 'Move the fact into a layer file the command READS, do not just delete the word:\n'
-    + 'a repository fact belongs in docs/testing-stack.md, an estate fact in the store\'s\n'
+    + 'a repository fact belongs in serpens/testing-stack.md, an estate fact in the store\'s\n'
     + `conventions/. The kit may still name its own toolchain (${KIT_OWN_TOOLCHAIN.slice(0, 6).join(', ')}, …).\n\n${report}\n`);
 });
 
@@ -223,9 +223,9 @@ test('the kit\'s own toolchain is NOT flagged', () => {
 // complete-JSON-event body still assumed a JSON broker, and `curl` still assumed HTTP.
 //
 // So the two TESTER-FACING commands may name no wire shape either. Everything they need comes
-// through a named slot in `docs/testing-stack.md`, which the repository — not the kit — answers.
+// through a named slot in `serpens/testing-stack.md`, which the repository — not the kit — answers.
 // The gate is scoped to those two files on purpose: the kit legitimately says `JSON` elsewhere
-// (openspec/index.json is the kit's OWN artifact) and legitimately says `curl` in setup docs
+// (serpens/index.json is the kit's OWN artifact) and legitimately says `curl` in setup docs
 // about reaching its own tooling. It is only in a tester-facing plan that these words are the
 // customer's stack in disguise.
 // `templates/testing-stack.md` is in scope too, and that was Codex's second correction on this
@@ -284,7 +284,7 @@ test('the tester-facing commands assume no wire shape the repository did not sup
   const report = hits.map((h) => `  ${h.file}:${h.line}  ${h.why}\n    ${h.text}`).join('\n');
   assert.deepEqual(hits, [],
     `\n${hits.length} shape assumption(s) survive in a tester-facing command.\n`
-    + 'The command must name a SLOT of docs/testing-stack.md, not the shape itself:\n\n'
+    + 'The command must name a SLOT of serpens/testing-stack.md, not the shape itself:\n\n'
     + `${report}\n`);
 });
 

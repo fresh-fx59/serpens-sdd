@@ -52,6 +52,19 @@ function initRepo(dir, { branch = 'develop' } = {}) {
 }
 
 /**
+ * Stage a Serpens-owned path (under `serpens/`) so check-git-naming.sh's ownership gate (gap 1,
+ * serpens-openspec-coexistence-gaps-2026-09-22.md, step 3) treats the guard's bad-input commit
+ * as Serpens work — every real onboarded repository's commits touch `serpens/` sooner or later,
+ * and these guards must keep proving the naming convention itself is enforced, not re-prove the
+ * ownership gate (that gate has its own suite, tests/git-naming-ownership-test.sh).
+ */
+function stageOwnedMarker(dir) {
+  mkdirSync(join(dir, 'serpens'), { recursive: true });
+  writeFileSync(join(dir, 'serpens', '.stage8-fixture'), 'x\n');
+  git(dir, ['add', 'serpens/.stage8-fixture']);
+}
+
+/**
  * Guard 1 — a wrong OpenSpec root must fail. Nest an un-onboarded repo (no `openspec/` of its
  * own) inside a directory that itself carries an `openspec/` root. `check-openspec-root.sh`
  * refuses on its OWN early check ("no openspec/ in this repo") before it ever reaches the
@@ -132,6 +145,7 @@ async function guardBadBranch({ run, lang = 'en' }) {
   try {
     const dir = tmp.dir('serpens-sdd-stage8-branch-');
     initRepo(dir, { branch: 'not-a-good-branch-name' });
+    stageOwnedMarker(dir);
     const { cmd, args } = resolveTool('git-naming', ['--branch'], lang);
     const result = await run(cmd, args, { cwd: dir });
     evidence.push(`$ ${cmd} ${args.join(' ')} (branch=not-a-good-branch-name) → exit ${result.code}`);
@@ -151,6 +165,7 @@ async function guardMismatchedTicket({ run, lang = 'en' }) {
   try {
     const dir = tmp.dir('serpens-sdd-stage8-ticket-');
     initRepo(dir, { branch: 'feature/ABCD-1234' });
+    stageOwnedMarker(dir);
     const msgFile = join(dir, 'COMMIT_EDITMSG');
     writeFileSync(msgFile, 'feat(WXYZ-9999): message ticket does not match the branch ticket\n', 'utf8');
     const { cmd, args } = resolveTool('git-naming', ['--commit-msg', msgFile], lang);
@@ -233,6 +248,10 @@ export async function proveBadCommitRejected({ run, lang = 'en' }, { hookBody } 
     await run('git', ['-C', dir, 'config', 'core.hooksPath', '.serpens-sdd-hooks']);
 
     writeFileSync(join(dir, 'file.txt'), 'change\n', 'utf8');
+    // Owned path staged too — check-git-naming.sh's ownership gate (gap 1, step 3) must see
+    // this bad commit as Serpens work, or it would (correctly, per that gate) let it through.
+    mkdirSync(join(dir, 'serpens'), { recursive: true });
+    writeFileSync(join(dir, 'serpens', '.stage8-fixture'), 'x\n', 'utf8');
     await run('git', ['-C', dir, 'add', '-A']);
     const commit = await run('git', ['-C', dir, 'commit', '-m', 'feat(WXYZ-9999): ticket does not match the branch'], { cwd: dir });
     evidence.push(`$ git commit (bad ticket, hook=${hookBody ? 'WEAKENED' : 'real check-git-naming.sh'}) → exit ${commit.code}`);

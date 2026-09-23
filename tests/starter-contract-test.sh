@@ -115,9 +115,20 @@ if rg -q '<openspec>' "$KIT/commands/spns-spec.md"; then pass "the openspec toke
 
 printf 'T5 OpenSpec lifecycle commands are explicit port placeholders\n'
 if rg -q '<openspec> new change' "$KIT/commands/spns-spec.md" && rg -q '<openspec> instructions proposal' "$KIT/commands/spns-spec.md" && rg -q '<openspec> instructions specs' "$KIT/commands/spns-spec.md"; then pass "spns-spec creates the change and names each artifact"; else fail "spns-spec OpenSpec calls missing"; fi
+# gap 2 (serpens-openspec-coexistence-gaps-2026-09-22.md): every `new change` call must be
+# followed by a `state mark-change` call, so a resumed change is never left unmarked.
+new_change_n=$(rg -c '<openspec> new change <' "$KIT/commands/spns-spec.md" || true)
+mark_change_n=$(rg -c 'state mark-change' "$KIT/commands/spns-spec.md" || true)
+if [ "${new_change_n:-0}" -ge 3 ] && [ "${new_change_n:-0}" = "${mark_change_n:-0}" ]; then pass "spns-spec marks every change it creates as Serpens-owned"; else fail "spns-spec: new change ($new_change_n) / state mark-change ($mark_change_n) count mismatch"; fi
 # A spec run can start with no ticket, on an existing branch, or already on it: all three must be handled.
 if rg -q 'NO-TICKET' "$KIT/commands/spns-spec.md"; then pass "spns-spec refuses to invent a ticket key"; else fail "spns-spec ticket gate missing"; fi
-if rg -q 'ls-remote --heads origin feature/<TICKET>' "$KIT/commands/spns-spec.md"; then pass "spns-spec looks for an existing story branch"; else fail "spns-spec existing-branch probe missing"; fi
+if rg -q 'ls-remote --heads origin "\$BRANCH"' "$KIT/commands/spns-spec.md"; then pass "spns-spec looks for an existing story branch"; else fail "spns-spec existing-branch probe missing"; fi
+# The branch shape belongs to the shop's serpens/branching.md, never to a prompt. A command
+# that spells `feature/` inside a git invocation is a second, unenforced copy of the contract: a
+# shop that configures release/<TICKET> then gets hooks that accept its shape and prompts that
+# still build the old one. Commands ASK (`git-naming --print-contract`) and use what it prints.
+if rg -q 'git-naming --print-contract' "$KIT/commands/spns-spec.md"; then pass "spns-spec asks for the branch name instead of inventing it"; else fail "spns-spec still assumes a branch shape"; fi
+if rg -q 'git (checkout|push|show-ref|ls-remote)[^\n]*feature/' "$KIT/commands" "$KIT/skills"; then fail "a git call still hardcodes feature/ instead of reading the branch contract"; else pass "no git call hardcodes the branch shape"; fi
 if rg -q 'assert-change <TICKET> --allow-dirty' "$KIT/commands/spns-spec.md"; then pass "spns-spec resumes on the story branch instead of re-preparing the base"; else fail "spns-spec resume path missing"; fi
 if rg -q '<openspec> instructions design' "$KIT/commands/spns-plan.md" && rg -q '<openspec> instructions tasks' "$KIT/commands/spns-plan.md"; then pass "spns-plan asks for design and tasks only"; else fail "spns-plan OpenSpec calls missing"; fi
 if rg -q '<openspec> instructions apply' "$KIT/commands/spns-implement.md"; then pass "spns-implement reads apply state"; else fail "spns-implement apply call missing"; fi
@@ -164,6 +175,9 @@ printf 'T7 serpens-lint keeps only what openspec validate does NOT check\n'
 fixture="$(mktemp -d)"
 mkdir -p "$fixture/openspec/changes/c1/specs"
 delta="$fixture/openspec/changes/c1/specs/spec.md"
+# Owned (gap 1, serpens-openspec-coexistence-gaps-2026-09-22.md, step 3 scopes delta-spec checks
+# to a marked change dir): this fixture change is ours.
+printf '# serpens-sdd:change-marker\nowner: serpens-sdd\n' > "$fixture/openspec/changes/c1/.serpens.yaml"
 lint() { node "$TOOLS/serpens-lint.mjs" "$fixture" >/dev/null 2>&1; }
 
 printf '# Delta\n\n## ADDED Requirements\n\n### Requirement: User signs in\n\n#### Scenario: ok\n- **WHEN** x\n- **THEN** y\n' > "$delta"

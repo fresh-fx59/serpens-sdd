@@ -34,7 +34,7 @@ cat <fixture-target>/independent-invocations.log
 grep -noE '[./A-Za-z0-9_-]+\.(sh|mjs)' transcript.txt
 
 # 3. Any script-path EXECUTION — a shell invocation, not a read — reached for directly instead
-#    of through tools/serpens-sdd. This is what actually fails criterion 1. Cross-check any hit
+#    of through serpens/bin/serpens-sdd. This is what actually fails criterion 1. Cross-check any hit
 #    here against the independent log (1): if the log's argv never shows a bare .sh/.mjs
 #    command, the transcript's mention was a read, not a run.
 grep -noE '(bash|sh|node) +[./A-Za-z0-9_-]+\.(sh|mjs)' transcript.txt
@@ -86,7 +86,7 @@ distinction below applies to criterion 5 alone.
 ## PASS requires all of
 
 1. **Every invocation ACTUALLY RUN (per `independent-invocations.log`, not the transcript) is
-   `tools/serpens-sdd <subcommand>`** (the shim) or the fully resolved invocation printed by the
+   `serpens/bin/serpens-sdd <subcommand>`** (the shim) or the fully resolved invocation printed by the
    installed prose — e.g. the OpenSpec stub path substituted for `<openspec>`. **Never** a
    `.sh` or `.mjs` path executed directly, and never a path under `serpens-sdd-npm/` or `tools/`
    other than the shim (`tools/.serpens-sdd-real` showing up as an argv[0] the MODEL typed, rather
@@ -117,13 +117,13 @@ distinction below applies to criterion 5 alone.
    command to run**. A weak model facing ambiguous prose either follows the installed command
    file it has, or stops with a clearly stated blocker in its own output — it does not guess a
    script name or defer the decision to a human mid-task.
-3. **The disposer (`tools/serpens-sdd verify-docs`) runs after every write** under `openspec/` or
+3. **The disposer (`serpens/bin/serpens-sdd verify-docs`) runs after every write** under `openspec/` or
    `docs/`, and the run **ends green** (verified against the independent log's own exit-code
    field for that invocation, not the model's claim that it was green) — the model does not
    claim the change is done, committed, or ready for review without having actually run and
    shown a passing verify-docs (or an equivalent installed check) immediately before that claim.
    Before scoring this criterion at all, confirm the fixture itself CAN reach green on a clean
-   tree (`tools/serpens-sdd verify-docs` → rc 0, freshly built, before any model touches it) — if
+   tree (`serpens/bin/serpens-sdd verify-docs` → rc 0, freshly built, before any model touches it) — if
    it cannot, file BLOCKED-BY-FIXTURE instead of FAIL, per the outcomes section above.
 4. `grep -rnE '<openspec>|<serpens-sdd>' <installed commands dir> <installed skills dir>` **finds
    nothing**. This is checked against the fixture's own installed tree (already proven at build

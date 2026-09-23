@@ -35,7 +35,7 @@ CLI cannot tell you this, so check the story. If the proposal is not approved, S
    the affected modules (use spns-drill-down; append new verified facts to research.md).
 2. Write design.md: approach, files/classes to touch, integration points, risky areas flagged
    with why, and — one line per acceptance scenario — which observable surface implements it
-   (the surfaces and stores `docs/testing-stack.md` names). That line is what `spns-test-plan`
+   (the surfaces and stores `serpens/testing-stack.md` names). That line is what `spns-test-plan`
    follows from spec to stand.
     Keep it under 200 lines — it is disposable; depth lives in the code and spec.
 3. Write tasks.md: state header line first ("As of YYYY-MM-DD — stage 1 (planned), next: task 1"),
@@ -49,7 +49,7 @@ CLI cannot tell you this, so check the story. If the proposal is not approved, S
    legitimately holds local-only settings, credential and scratch files that must never be
    committed, and an untracked file you did not create is not yours to stage. A file you created
    is untracked until you add it — adding it is part of writing it. Commit with
-   `docs(<TICKET>): <text>` (`<serpens-sdd> git-naming` enforces the type), push to
-   `origin/feature/<TICKET>`, and paste `git log --oneline -1` plus
+   `docs(<TICKET>): <text>` (`<serpens-sdd> git-naming` enforces the type and the form —
+   `--print-contract` prints both), push to the story branch, and paste `git log --oneline -1` plus
    `git status --short` as evidence.
 6. Present the plan to the developer for approval. Do not start implementing.

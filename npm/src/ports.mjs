@@ -21,7 +21,19 @@ export const PORT_FIELDS = [
   'skill_layout',
   'instruction_file',
   'verified',
+  'openspec_tool',
 ];
+
+/**
+ * OpenSpec's own `skillsDir` for a tool id it knows (`@fission-ai/openspec` 1.13.1
+ * `dist/core/config.js` AI_TOOLS) — the directory `openspec init --tools <id>` actually writes
+ * into, which is not always `.<id>` (e.g. `codex` -> `.agents`). Only the ids this package
+ * currently maps a port onto via `openspec_tool` need an entry here; add one whenever a new
+ * `openspec_tool` override is introduced.
+ */
+export const OPENSPEC_TOOL_SKILLS_DIR = {
+  qwen: '.qwen',
+};
 
 const COMMAND_LAYOUTS = ['flat-prefixed', 'subdir-unprefixed'];
 const COMMAND_FORMATS = ['md', 'toml', 'prompt'];
@@ -66,6 +78,10 @@ export function validatePort(obj) {
     if (!COMMAND_FORMATS.includes(obj.command_format)) {
       errors.push(`missing or malformed field: command_format (must be one of: ${COMMAND_FORMATS.join(', ')})`);
     }
+  }
+
+  if (obj.openspec_tool !== undefined && (typeof obj.openspec_tool !== 'string' || obj.openspec_tool === '')) {
+    errors.push('malformed field: openspec_tool (expected a non-empty string when present)');
   }
 
   if (obj.skills_supported === true) {
@@ -123,4 +139,30 @@ export function loadPort({ id, file, registryDir = PORTS_DIR } = {}) {
     throw err;
   }
   return port;
+}
+
+/**
+ * The tool id to pass OpenSpec's own `--tools <id>` flag for this port.
+ *
+ * Most ports' id IS the id OpenSpec's own AI_TOOLS registry knows (verified against
+ * `@fission-ai/openspec` 1.13.1 `dist/core/config.js`) — `--tools <port.id>` just works. A few
+ * ports are forks/rebrands OpenSpec has never heard of (GigaCode, a fork of Qwen Code): for
+ * those the port file carries an explicit `openspec_tool` override naming the OpenSpec tool id
+ * whose generated files get relocated afterwards (see src/openspec-tool-relocate.mjs). Absent the
+ * override, the port id is used as-is, unchanged from before this field existed.
+ * @param {object} port - a loaded, validated port object
+ * @returns {string|undefined}
+ */
+export function openspecToolId(port) {
+  return port?.openspec_tool ?? port?.id;
+}
+
+/**
+ * True when this port needs OpenSpec's output relocated after the fact — i.e. OpenSpec was
+ * asked for a DIFFERENT tool id than the port's own `agent_dir` implies.
+ * @param {object} port
+ * @returns {boolean}
+ */
+export function needsOpenspecRelocation(port) {
+  return Boolean(port?.openspec_tool) && port.openspec_tool !== port.id;
 }

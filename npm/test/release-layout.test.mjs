@@ -20,6 +20,11 @@ for (const packageName of ['serpens-sdd-npm', 'npm']) {
         cpSync(source, join(root, 'tests', file));
       }
       cpSync(join(pkg, 'tools'), join(root, packageName, 'tools'), { recursive: true });
+      // `src/` too, and not as padding: `package.json`'s `files` ships it, and `tools/` imports
+      // from it — `serpens-lint.mjs` reads the owned-directory name from `src/layout.mjs` rather
+      // than repeating the literal. Staging `tools/` alone made this fixture claim a layout npm
+      // never publishes, and the suites then failed on a missing module.
+      cpSync(join(pkg, 'src'), join(root, packageName, 'src'), { recursive: true });
       cpSync(join(pkg, 'package.json'), join(root, packageName, 'package.json'));
       for (const lang of ['en', 'ru']) {
         const kit = join(root, lang);

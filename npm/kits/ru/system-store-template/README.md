@@ -4,6 +4,6 @@
 Подключённые репозитории зарегистрированы как Git-подмодули в `submodules/`.
 
 Не изменяйте регистрацию подмодулей вручную. Передавайте нормализованный
-результат поиска в `tools/serpens-sdd sync-submodules --repos-from -` через
+результат поиска в `serpens/bin/serpens-sdd sync-submodules --repos-from -` через
 stdin (или `--inventory <путь>` для JSON-файла); список хранится в
 `.gitmodules`, отдельного файла `project-repositories.json` нет.

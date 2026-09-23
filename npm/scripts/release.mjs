@@ -61,6 +61,7 @@ const TOOL_SUITES = {
   'index-all-submodules-test.sh': 'index-all.sh',
   'aggregate-submodules-test.sh': 'aggregate-index.mjs',
   'split-brain-window-test.sh': 'check-contract-split-brain.mjs',
+  'git-naming-ownership-test.sh': 'check-git-naming.sh',
   // verify-docs-path-test.sh retired: it tested verify-docs.sh, which Task 3 deleted (the
   // package reimplements verify-docs in src/cli/verify-docs.mjs). Coverage now lives in the
   // package's own test/verify-docs.test.mjs and the parity gate's verify-docs cases.

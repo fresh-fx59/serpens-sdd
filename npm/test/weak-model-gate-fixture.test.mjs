@@ -38,7 +38,7 @@ for (const [lang, flags] of [
     for (const file of files) {
       const expected = substituteTokens(readFileSync(join(kit, file), 'utf8'), {
         openspec: join(target, 'bin', 'openspec'),
-        serpensSdd: '"$(git rev-parse --show-toplevel)"/tools/serpens-sdd',
+        serpensSdd: '"$(git rev-parse --show-toplevel)"/serpens/bin/serpens-sdd',
       });
       const destination = file.startsWith('commands/') ? file.replace('commands/spns-', 'commands/spns/') : file;
       assert.equal(readFileSync(join(installed, destination), 'utf8'), expected, `${lang}/${file}`);

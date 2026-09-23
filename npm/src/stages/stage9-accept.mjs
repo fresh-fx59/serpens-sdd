@@ -1,3 +1,6 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
+import { LAYOUT } from '../layout.mjs';
 import { resolveTool } from '../cli/tools.mjs';
 import { buildHelp } from '../cli/help.mjs';
 import { rowsToTsv, resolveRepositoryRows } from '../inventory.mjs';
@@ -18,6 +21,35 @@ export async function stage9(ctx) {
   // Same rule as every other wrapper call site: the resolved kit language picks the script.
   const lang = config?.lang ?? 'en';
   const evidence = [];
+
+  // Repo-local (step 6, gap 3): no store, no submodules, nothing to re-sync. Acceptance records
+  // the repository's own `git status` (the dirty tree the human reviews and commits — init never
+  // commits or pushes) plus `help --json`, and proves `serpens/topology` is in place.
+  if (ctx.topology === 'repo-local') {
+    const { repoRoot } = ctx;
+    const help = buildHelp({
+      port: port?.id ?? 'unknown', scope: config?.port_scope ?? 'unknown', lang, edition: ctx.edition,
+    });
+    if (dryRun) {
+      evidence.push('dry-run: stage9 (repo-local) would do (nothing below is executed):');
+      evidence.push(`  $ test "$(cat ${join(repoRoot, LAYOUT.topology)})" = repo-local`);
+      evidence.push(`  $ git -C ${repoRoot} status --short --branch   # recorded; never committed or pushed`);
+      evidence.push('  $ help --json appended to the log as the install\'s own record');
+      return { ok: true, evidence };
+    }
+    const topoPath = join(repoRoot, LAYOUT.topology);
+    const topo = existsSync(topoPath) ? readFileSync(topoPath, 'utf8').trim() : null;
+    if (topo !== 'repo-local') {
+      return { ok: false, evidence, error: `${topoPath} is ${topo === null ? 'missing' : `'${topo}'`} — stage 5 must write 'repo-local' there`, exitCode: 1 };
+    }
+    evidence.push(`✓ ${topoPath}: repo-local`);
+    const status = await run('git', ['-C', repoRoot, 'status', '--short', '--branch'], { log });
+    evidence.push(`$ git -C ${repoRoot} status --short --branch → exit ${status.code}`);
+    evidence.push(`repository status (uncommitted — review and commit it yourself):\n${status.stdout}`.trimEnd());
+    evidence.push(`help --json:\n${JSON.stringify(help, null, 2)}`);
+    return { ok: true, evidence };
+  }
+
   // Same resolved rows stage 1 put in ctx and stage 4 already fed on stdin — this re-run must
   // be a no-op precisely BECAUSE the rows are unchanged, not because a file survived unwritten.
   // A partial rerun (`--only 9` without stage 1) never populates `ctx.repositoryRows` — resolve

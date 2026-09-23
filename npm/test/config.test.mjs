@@ -85,3 +85,42 @@ test('proveOpenspec returns the detected version on success', async () => {
   assert.equal(r.ok, true);
   assert.equal(r.version.raw, `${SUPPORTED_MINORS[0]}.5`);
 });
+
+// Step 6 (gap 3, spec-openspec-coexistence-2026-09-22.md): repo-local topology — one repository,
+// no sibling store. `store:`/`repositories:` are FORBIDDEN there (a validation error), never ignored.
+const repoLocal = {
+  schema_version: 1, topology: 'repo-local', project: 'acme-billing', lang: 'en', port: 'claude',
+  openspec: { invocation: 'npx @fission-ai/openspec@1.13.1' },
+  repo: { root: '.', name: 'acme-billing', base_branch: 'main' },
+};
+
+test('repo-local: a valid config passes, and root may equal the checkout (the outside rule is store-only)', () => {
+  const r = validateConfig(repoLocal, { checkoutRoot: process.cwd(), resolveFrom: process.cwd() });
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.value.topology, 'repo-local');
+  assert.equal(r.value.store, undefined, 'no store object is invented in repo-local');
+  assert.equal(r.value.repositories, undefined);
+});
+
+test('repo-local: store: is an error, not ignored', () => {
+  const r = validateConfig({ ...repoLocal, store: good.store });
+  assert.match(r.errors.join('\n'), /store.*not allowed.*repo-local/);
+});
+
+test('repo-local: repositories: is an error, not ignored', () => {
+  const r = validateConfig({ ...repoLocal, repositories: good.repositories });
+  assert.match(r.errors.join('\n'), /repositories.*not allowed.*repo-local/);
+});
+
+test('repo-local: missing repo.base_branch, repo.name or repo.root is an error', () => {
+  assert.match(validateConfig({ ...repoLocal, repo: { root: '.', name: 'x' } }).errors.join(), /repo\.base_branch/);
+  assert.match(validateConfig({ ...repoLocal, repo: { root: '.', base_branch: 'main' } }).errors.join(), /repo\.name/);
+  assert.match(validateConfig({ ...repoLocal, repo: { name: 'x', base_branch: 'main' } }).errors.join(), /repo\.root/);
+});
+
+test('an unknown topology is an error; an absent one means store (existing configs unchanged)', () => {
+  assert.match(validateConfig({ ...good, topology: 'mesh' }).errors.join(), /topology/);
+  const r = validateConfig(good);
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.value.topology, 'store');
+});

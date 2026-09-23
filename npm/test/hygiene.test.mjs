@@ -92,9 +92,12 @@ test('the committed port registry matches a fresh generation', () => {
   assert.ok(ports.gigacode, 'expected ports/gigacode.json to exist');
   assert.ok(ports.qwen, 'expected ports/qwen.json to exist');
 
-  const layoutFields = PORT_FIELDS.filter(
-    (f) => !['id', 'agent_dir', 'label', 'instruction_file', 'scope_preference', 'verified'].includes(f),
-  );
+  // openspec_tool: an identity field like agent_dir/label, not a layout field — gigacode names
+  // the OpenSpec tool id it maps onto (qwen); qwen (being that tool itself) carries no override.
+  // Their difference is exactly the point of the field, so it belongs with the "must differ"
+  // set below, not the "must match" one.
+  const identityFields = ['id', 'agent_dir', 'label', 'instruction_file', 'scope_preference', 'verified', 'openspec_tool'];
+  const layoutFields = PORT_FIELDS.filter((f) => !identityFields.includes(f));
   for (const field of layoutFields) {
     assert.deepEqual(
       ports.gigacode[field],
@@ -102,13 +105,23 @@ test('the committed port registry matches a fresh generation', () => {
       `gigacode.${field} should match qwen.${field} (same underlying layout)`,
     );
   }
-  for (const field of ['agent_dir', 'label', 'instruction_file', 'scope_preference', 'verified']) {
+  for (const field of ['agent_dir', 'label', 'instruction_file', 'scope_preference', 'verified', 'openspec_tool']) {
     assert.notDeepEqual(
       ports.gigacode[field],
       ports.qwen[field],
       `gigacode.${field} should differ from qwen.${field} (distinct identity)`,
     );
   }
+});
+
+test('OWNED_PREFIXES (src/layout.mjs) has at least one importer', () => {
+  // Was dead (serpens-openspec-coexistence-gaps-2026-09-22.md gap 2): declared, never read.
+  // src/ownership.mjs is its first consumer (isOwnedPath).
+  const files = [...walk(join(ROOT, 'src')), ...walk(join(ROOT, 'tools'))].filter(
+    (f) => f.endsWith('.mjs') && !f.endsWith('layout.mjs'),
+  );
+  const importers = files.filter((f) => readFileSync(f, 'utf8').includes('OWNED_PREFIXES'));
+  assert.ok(importers.length > 0, 'OWNED_PREFIXES must be imported/used by at least one file');
 });
 
 test('package.json files[] lists only directories that exist', () => {

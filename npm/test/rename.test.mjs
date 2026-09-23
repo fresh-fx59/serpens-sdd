@@ -25,18 +25,15 @@ const KITS = [resolveKitSource('en'), resolveKitSource('ru')];
 const ALLOWED = /corporate|корпоратив|corpus/i;
 const LEFTOVER = /\bcorp[-_. ]/i;
 
-// `docs/UPGRADE.md` is the ONE file that must still spell the pre-rename names: its rename
-// boundary section tells the installation agent which `corp-*` commands, `corp-*` skills,
-// `tools/corp-sdd` shims and `corp.*` git config keys to delete and migrate. An upgrade that
-// cannot name the old thing cannot remove it. Exempted here, and asserted positively below so
-// the section can never be silently dropped.
-// `docs/MIGRATION-71de101-to-current.md` is the second, and it exists ONLY in the published
-// repository (`fresh-fx59/serpens-sdd`), never in this vault — the kit-source resolver reaches it
-// once the package lives beside `en/` and `ru/` there. It is the runbook for migrating FROM the
-// public `corp-sdd` at `71de101`, so naming `corp-*` skills and `Corp` commands is its entire
-// subject; a migration document that cannot name what you are migrating from is useless.
-// Surfaced by assembling the public layout for the first time — the gate had never seen it.
-const NAMES_OLD_ON_PURPOSE = /docs\/(UPGRADE|MIGRATION-71de101-to-current)\.md$/;
+// 2026-09-21: the rename-boundary section used to live in `docs/UPGRADE.md`, and a companion
+// `docs/MIGRATION-71de101-to-current.md` shipped publicly, both narrating the corp-sdd ->
+// serpens-sdd rename for installs that needed to migrate off the old name. Verified via
+// `npm view @fresh-fx59/corp-sdd` (404): the old package was never published, so nothing was
+// ever installed under it and there was no reader to migrate. Both are retired — UPGRADE.md
+// keeps only its edition-to-edition upgrade procedure (stages 0-9), and the MIGRATION doc is
+// deleted outright (public-repo-only file; not present in this vault). No file in either kit
+// is exempted from the leftover-corp check any more.
+const NAMES_OLD_ON_PURPOSE = /(?!)/; // matches nothing — no exemptions remain
 
 function walk(dir, out = []) {
   for (const e of readdirSync(dir, { withFileTypes: true })) {
@@ -74,12 +71,14 @@ test('no PATH in the package or either kit is still named corp', () => {
   assert.deepEqual(bad, []);
 });
 
-test('docs/UPGRADE.md still names every pre-rename identifier the migration must remove', () => {
+test('docs/UPGRADE.md no longer carries the retired rename-boundary section '
+  + '(2026-09-21: @fresh-fx59/corp-sdd was never published, so there was nothing to migrate off)', () => {
   for (const kit of KITS) {
     const text = readFileSync(join(kit, 'docs', 'UPGRADE.md'), 'utf8');
-    for (const needed of ['corp-*.md', 'corp-*', 'tools/corp-sdd', 'corp.$pair', '@fresh-fx59/corp-sdd']) {
-      assert.ok(text.includes(needed), `${kit}/docs/UPGRADE.md no longer mentions ${needed}`);
+    for (const retired of ['corp-*.md', 'corp-*', 'serpens/bin/corp-sdd', 'corp.$pair', '@fresh-fx59/corp-sdd', 'rename boundary']) {
+      assert.ok(!text.includes(retired), `${kit}/docs/UPGRADE.md still mentions retired text: ${retired}`);
     }
+    assert.ok(text.includes('## 0.'), `${kit}/docs/UPGRADE.md must still open with the general upgrade procedure`);
   }
 });
 
@@ -113,21 +112,21 @@ test('every command-capable port namespaces our commands as spns, never corp', (
   assert.equal(capable, 31, 'expected 31 command-capable ports');
 });
 
-// --- 4. the generated shim is tools/serpens-sdd, and no tools/corp-sdd is ever written ----
-test('writeShim writes tools/serpens-sdd and nothing named corp', () => {
+// --- 4. the generated shim is serpens/bin/serpens-sdd, and no tools/corp-sdd is ever written ----
+test('writeShim writes serpens/bin/serpens-sdd and nothing named corp', () => {
   const repo = mkdtempSync(join(tmpdir(), 'serpens-shim-'));
   const written = writeShim(repo, { binPath: join(PKG_ROOT, 'bin', 'serpens-sdd.mjs') });
-  const shim = join(repo, 'tools', 'serpens-sdd');
-  assert.ok(existsSync(shim), 'tools/serpens-sdd must exist');
-  assert.ok(!existsSync(join(repo, 'tools', 'corp-sdd')), 'tools/corp-sdd must NOT be written');
-  assert.deepEqual(readdirSync(join(repo, 'tools')).sort(), ['serpens-sdd']);
+  const shim = join(repo, 'serpens', 'bin', 'serpens-sdd');
+  assert.ok(existsSync(shim), 'serpens/bin/serpens-sdd must exist');
+  assert.ok(!existsSync(join(repo, 'serpens', 'bin', 'corp-sdd')), 'serpens/bin/corp-sdd must NOT be written');
+  assert.deepEqual(readdirSync(join(repo, 'serpens', 'bin')).sort(), ['serpens-sdd']);
   assert.ok(String(written).includes('serpens-sdd'));
   assert.ok(!readFileSync(shim, 'utf8').includes('corp-sdd'), 'the shim body must not mention corp-sdd');
   assert.ok(statSync(shim).mode & 0o111, 'the shim must be executable');
 });
 
-test('SHIM_INVOCATION resolves to tools/serpens-sdd under the repository root', () => {
-  assert.equal(SHIM_INVOCATION, '"$(git rev-parse --show-toplevel)"/tools/serpens-sdd');
+test('SHIM_INVOCATION resolves to serpens/bin/serpens-sdd under the repository root', () => {
+  assert.equal(SHIM_INVOCATION, '"$(git rev-parse --show-toplevel)"/serpens/bin/serpens-sdd');
 });
 
 // --- 5. serpens.agentDir is the key, and a leftover corp.agentDir is NOT consulted --------

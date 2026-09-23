@@ -1,6 +1,6 @@
 ---
 name: spns-drill-down
-description: How to gather system knowledge — catalog to repo to live code. Use whenever work needs facts about ANY capability, module, or contract.
+description: How to gather system knowledge — catalog to repo to live code. Use whenever work on a Serpens change (spns-* commands or a change with `.serpens.yaml`) needs facts about a capability, module, or contract.
 serpens-version: 2026-09-21.1
 ---
 ## Trust order (absolute)
@@ -10,12 +10,12 @@ to the level above it; only code and living specs may be QUOTED as fact.
 ## The walk (≤3 content-bearing hops; no sibling preloading)
 1. Central catalog (system store catalog.md): find which repo owns the capability. A ⚠ STALE or
    🔴 RED marker means: do not trust the entry — go to the repo directly.
-2. That repo's openspec/index.md: find the capability's living spec + relevant module. If the
+2. That repo's serpens/index.md: find the capability's living spec + relevant module. If the
    catalog and the repo index disagree, the repo index wins — note the mismatch in the tracker
    so DevOps re-aggregates.
 3. The living spec, then the ACTUAL code it points to (registered Git submodule; run
    `<serpens-sdd> sync-submodules` if it is stale — the lint warns). For contract facts
-   (field names, and the surface shapes `docs/testing-stack.md` names):
+   (field names, and the surface shapes `serpens/testing-stack.md` names):
    read the source and EMBED it (`<!-- embed: path#Lx-Ly -->`) — never transcribe by hand, never
    quote a spec's prose for a shape when the source is one hop away.
 

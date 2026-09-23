@@ -1,4 +1,4 @@
-// One place that turns a freshly-rendered `docs/testing-stack.md` into a FULLY answered one,
+// One place that turns a freshly-rendered `serpens/testing-stack.md` into a FULLY answered one,
 // the way a team would. Shared because three suites need it and because the schema
 // (src/testingstack.mjs) will keep growing: a helper that answers "every slot, whatever they
 // are" cannot drift out of date the way three hand-written replace chains did.

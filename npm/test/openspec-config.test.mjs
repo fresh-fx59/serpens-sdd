@@ -9,7 +9,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   declareStoreReference, declaredReferenceIds, topLevelKeys, inspectConfig, resolveConfigPath,
-  renameStoreReference,
+  renameStoreReference, declareContextCatalog, declareArtifactRules, renderContextCatalog,
+  verifyOnlyAdded,
 } from '../src/openspecconfig.mjs';
 
 const ID = 'acme-store';
@@ -466,4 +467,186 @@ test('a line that dedents out of the references block ends it — the entries be
   assert.equal(r.action, 'unchanged');
   assert.equal(r.text, text);
   assert.deepEqual(declaredReferenceIds(text), ['alpha']);
+});
+
+// ---------------------------------------------------------------------------
+// The context catalog and the per-artifact rules — the two other slots OpenSpec injects.
+// Design rule under test: `context:` is a CATALOG the agent chooses from, `rules:` is the
+// per-stage ORDER. Neither is ever written over a user's own.
+
+const CATALOG = [
+  { path: 'serpens/testing-stack.md', answers: 'how tests run here, and what a tester can send or query' },
+  { path: 'serpens/branching.md', answers: 'branch and ticket naming' },
+];
+const RULES = {
+  design: ['Read serpens/testing-stack.md before choosing a boundary to test.'],
+  tasks: ['Read serpens/testing-stack.md before listing any task that runs a test.'],
+};
+
+test('the catalog never tells the agent to read every file', () => {
+  const body = renderContextCatalog(CATALOG).join('\n');
+  // The whole reason the catalog exists rather than a "read these files" line: a shop that adds
+  // a tenth fact file must not make every artifact instruction pay for ten reads.
+  assert.match(body, /Open only what the current step needs\./);
+  assert.doesNotMatch(body, /read (all|these|every)/i);
+  for (const e of CATALOG) assert.ok(body.includes(e.path) && body.includes(e.answers));
+});
+
+test('context: is appended as a block scalar and parses as the prose OpenSpec expects', () => {
+  const before = 'schema: spec-driven\nreferences:\n  - id: acme-store\n';
+  const r = declareContextCatalog(before, CATALOG);
+  assert.equal(r.action, 'appended');
+  const keys = assertValidYaml(r.text, 'the config with a catalog must parse');
+  assert.deepEqual(keys, ['context', 'references', 'schema']);
+  const out = execFileSync('python3', ['-c',
+    'import sys,yaml; print(yaml.safe_load(sys.stdin)["context"])'],
+    { input: r.text, encoding: 'utf8' });
+  // A block scalar, so the value is one string — not a mapping OpenSpec would reject.
+  assert.ok(out.includes('serpens/testing-stack.md'));
+  assert.ok(out.includes('serpens/branching.md'));
+});
+
+test("a user's own context: is never rewritten", () => {
+  const mine = 'schema: spec-driven\ncontext: |\n  Our platform handbook is the authority.\n  Cross-team references: see the handbook.\n';
+  const r = declareContextCatalog(mine, CATALOG);
+  assert.equal(r.action, 'unchanged');
+  assert.equal(r.text, mine);
+  assert.match(r.reason, /belongs to the user/);
+  assert.match(r.manual, /serpens\/testing-stack\.md/);
+});
+
+test('rules: is keyed by artifact, so each stage gets only the facts it needs', () => {
+  const before = 'schema: spec-driven\n';
+  const r = declareArtifactRules(before, RULES);
+  assert.equal(r.action, 'appended');
+  assertValidYaml(r.text, 'the config with rules must parse');
+  const out = execFileSync('python3', ['-c',
+    'import sys,yaml,json; print(json.dumps(yaml.safe_load(sys.stdin)["rules"]))'],
+    { input: r.text, encoding: 'utf8' });
+  const parsed = JSON.parse(out);
+  // Upstream's shape: Record<artifactId, string[]>.
+  assert.deepEqual(Object.keys(parsed).sort(), ['design', 'tasks']);
+  assert.deepEqual(parsed.tasks, RULES.tasks);
+  // `proposal` is deliberately absent: it is intent, and needs none of our facts.
+  assert.equal(parsed.proposal, undefined);
+});
+
+test("a user's rule for an id we also asked for is never rewritten", () => {
+  const mine = 'schema: spec-driven\nrules:\n  design:\n    - Our own rule.\n  tasks:\n    - Our own rule.\n';
+  const r = declareArtifactRules(mine, RULES);
+  assert.equal(r.action, 'unchanged');
+  assert.equal(r.text, mine);
+  assert.deepEqual(r.perId, { design: 'unchanged', tasks: 'unchanged' });
+});
+
+test('both keys refuse rather than guess on a config this tool cannot read', () => {
+  const tabs = 'schema: spec-driven\n\tcontext: x\n';
+  assert.equal(declareContextCatalog(tabs, CATALOG).action, 'refused');
+  assert.equal(declareArtifactRules(tabs, RULES).action, 'refused');
+});
+
+// ---------------------------------------------------------------------------
+// Gap 5 — a brownfield `rules:` gets our missing artifact ids inserted, id by id, rather than
+// refusing the whole key the way it used to. The user's own ids are never touched.
+
+test('gap 5: existing rules: with one id declared gets the others inserted', () => {
+  const before = 'schema: spec-driven\nrules:\n  proposal:\n    - Keep it short.\n';
+  const r = declareArtifactRules(before, RULES);
+  assert.equal(r.action, 'inserted');
+  assert.deepEqual(r.perId, { design: 'inserted', tasks: 'inserted' });
+  const keys = assertValidYaml(r.text, 'the config with inserted rules must parse');
+  assert.deepEqual(keys, ['rules', 'schema']);
+  const out = execFileSync('python3', ['-c',
+    'import sys,yaml,json; print(json.dumps(yaml.safe_load(sys.stdin)["rules"]))'],
+    { input: r.text, encoding: 'utf8' });
+  const parsed = JSON.parse(out);
+  assert.deepEqual(Object.keys(parsed).sort(), ['design', 'proposal', 'tasks']);
+  // The user's own `proposal` entry is untouched, byte for byte.
+  assert.ok(r.text.includes('  proposal:\n    - Keep it short.\n'));
+  assert.deepEqual(parsed.tasks, RULES.tasks);
+  assert.deepEqual(parsed.design, RULES.design);
+});
+
+test('gap 5: every id already declared under rules: → unchanged, byte-identical', () => {
+  const before = 'schema: spec-driven\nrules:\n  design:\n    - Mine.\n  tasks:\n    - Mine too.\n';
+  const r = declareArtifactRules(before, RULES);
+  assert.equal(r.action, 'unchanged');
+  assert.equal(r.text, before);
+  assert.deepEqual(r.perId, { design: 'unchanged', tasks: 'unchanged' });
+});
+
+test('gap 5: rules: followed by another top-level key → insertion lands before that key', () => {
+  const before = 'schema: spec-driven\nrules:\n  proposal:\n    - Keep it short.\noperations:\n  apply:\n    guidance:\n      - Ship behind a flag.\n';
+  const r = declareArtifactRules(before, RULES);
+  assert.equal(r.action, 'inserted');
+  const opAt = r.text.indexOf('operations:');
+  const designAt = r.text.indexOf('  design:');
+  const tasksAt = r.text.indexOf('  tasks:');
+  assert.ok(designAt !== -1 && designAt < opAt, 'design: must be inserted before operations:');
+  assert.ok(tasksAt !== -1 && tasksAt < opAt, 'tasks: must be inserted before operations:');
+  assertValidYaml(r.text, 'the config with a mid-file insertion must still parse');
+});
+
+test('gap 5: a flow-style rules: refuses, text untouched', () => {
+  const before = 'schema: spec-driven\nrules: {proposal: [x]}\n';
+  const r = declareArtifactRules(before, RULES);
+  assert.equal(r.action, 'refused');
+  assert.equal(r.text, undefined);
+  assert.match(r.reason, /flow style/);
+});
+
+test('gap 5: a scalar rules: refuses, text untouched', () => {
+  const before = 'schema: spec-driven\nrules: something\n';
+  const r = declareArtifactRules(before, RULES);
+  assert.equal(r.action, 'refused');
+  assert.match(r.reason, /scalar/);
+});
+
+test('gap 5: a rules: block scalar refuses, text untouched', () => {
+  const before = 'schema: spec-driven\nrules: |\n  proposal: keep it short\n';
+  const r = declareArtifactRules(before, RULES);
+  assert.equal(r.action, 'refused');
+  assert.match(r.reason, /block scalar/);
+});
+
+test('gap 5: an existing rules: block indented four spaces refuses rather than mismatch', () => {
+  const before = 'schema: spec-driven\nrules:\n    proposal:\n        - Keep it short.\n';
+  const r = declareArtifactRules(before, RULES);
+  assert.equal(r.action, 'refused');
+  assert.match(r.reason, /two spaces/);
+});
+
+test('gap 5: CRLF file → inserted lines use CRLF', () => {
+  const before = 'schema: spec-driven\r\nrules:\r\n  proposal:\r\n    - Keep it short.\r\n';
+  const r = declareArtifactRules(before, RULES);
+  assert.equal(r.action, 'inserted');
+  assert.ok(r.text.includes('  design:\r\n    - '));
+  assert.ok(!/[^\r]\n/.test(r.text), 'every line ending must be CRLF');
+});
+
+test('gap 5: verifyOnlyAdded rejects an edit that altered one user byte (negative control)', () => {
+  const before = 'schema: spec-driven\nrules:\n  proposal:\n    - Keep it short.\n';
+  const corrupted = 'schema: spec-drivenX\nrules:\n  proposal:\n    - Keep it short.\n  design:\n    - Mine.\n';
+  const check = verifyOnlyAdded(before, corrupted, ['  design:', '    - Mine.'], '\n', 4);
+  assert.equal(check.ok, false);
+  assert.match(check.reason, /surrounding content changed/);
+});
+
+test('a rule value that YAML would coerce is quoted, not lost', () => {
+  const r = declareArtifactRules('schema: spec-driven\n', { tasks: ['yes'] });
+  const out = execFileSync('python3', ['-c',
+    'import sys,yaml,json; print(json.dumps(yaml.safe_load(sys.stdin)["rules"]["tasks"]))'],
+    { input: r.text, encoding: 'utf8' });
+  // YAML 1.1 reads a bare `yes` as the boolean true; the rule must come back as the string.
+  assert.deepEqual(JSON.parse(out), ['yes']);
+});
+
+test('the catalog and the rules compose without disturbing what is already there', () => {
+  const before = 'schema: spec-driven\noperations:\n  apply:\n    guidance:\n      - Ship behind a flag.\n';
+  const a = declareContextCatalog(before, CATALOG);
+  const b = declareArtifactRules(a.text, RULES);
+  assert.equal(b.action, 'appended');
+  const keys = assertValidYaml(b.text, 'catalog + rules on top of an existing config must parse');
+  assert.deepEqual(keys, ['context', 'operations', 'rules', 'schema']);
+  assert.ok(b.text.startsWith(before.trimEnd()));
 });

@@ -7,6 +7,20 @@ import { SHIM_INVOCATION } from './shim.mjs';
  */
 export const INPUTS = [
   {
+    // Step 6 (gap 3): `store` (default, the sibling-store install) or `repo-local` (one
+    // repository, no store). Resolved FIRST: every input below tagged `topology:` is only
+    // resolved — and only required — when it matches, so a repo-local run is never asked for
+    // store.remote/root/base_branch and a store run is never asked for repo.*. Never prompted:
+    // the interactive flow of a store install stays exactly as it was.
+    key: 'topology',
+    flag: '--topology',
+    env: 'SERPENS_SDD_TOPOLOGY',
+    question: 'Topology (store | repo-local)',
+    required: false,
+    default: 'store',
+    prompt: false,
+  },
+  {
     key: 'project',
     flag: '--project',
     env: 'SERPENS_SDD_PROJECT',
@@ -49,7 +63,7 @@ export const INPUTS = [
   },
   {
     // How every installed command, skill and hook calls this package. The default is the shim
-    // stages 3 and 5 write at `<repo>/tools/serpens-sdd`, resolved through `git rev-parse` so it is
+    // stages 3 and 5 write at `<repo>/serpens/bin/serpens-sdd`, resolved through `git rev-parse` so it is
     // correct from any working directory and inside a user-scoped command file. Optional: a shop
     // that reaches the package another way (a global install, `node_modules/.bin`, a wrapper)
     // sets it explicitly. Never leave it empty — a bare `serpens-sdd` is not on PATH in a
@@ -75,6 +89,7 @@ export const INPUTS = [
   },
   {
     key: 'store.remote',
+    topology: 'store',
     flag: '--store-remote',
     env: 'SERPENS_SDD_STORE_REMOTE',
     question: 'Store git remote URL',
@@ -82,6 +97,7 @@ export const INPUTS = [
   },
   {
     key: 'store.base_branch',
+    topology: 'store',
     flag: '--store-base-branch',
     // Spec §3's one-liner writes `--store-base`; see the note on openspec.invocation.
     aliases: ['--store-base'],
@@ -91,6 +107,7 @@ export const INPUTS = [
   },
   {
     key: 'store.root',
+    topology: 'store',
     flag: '--store-root',
     env: 'SERPENS_SDD_STORE_ROOT',
     question: 'Store checkout root (outside this checkout)',
@@ -98,10 +115,36 @@ export const INPUTS = [
   },
   {
     key: 'store.id',
+    topology: 'store',
     flag: '--store-id',
     env: 'SERPENS_SDD_STORE_ID',
     question: 'Store id',
     required: false,
+  },
+  {
+    key: 'repo.root',
+    topology: 'repo-local',
+    flag: '--repo-root',
+    env: 'SERPENS_SDD_REPO_ROOT',
+    question: 'Repository root (its own git top-level)',
+    required: false,
+    default: '.',
+  },
+  {
+    key: 'repo.name',
+    topology: 'repo-local',
+    flag: '--repo-name',
+    env: 'SERPENS_SDD_REPO_NAME',
+    question: 'Repository name (lower-case kebab-case)',
+    required: true,
+  },
+  {
+    key: 'repo.base_branch',
+    topology: 'repo-local',
+    flag: '--repo-base-branch',
+    env: 'SERPENS_SDD_REPO_BASE_BRANCH',
+    question: 'Repository base branch',
+    required: true,
   },
 ];
 
@@ -180,6 +223,8 @@ export async function resolveInputs({ argv, config, env, tty, nonInteractive, as
   const canPrompt = tty === true && nonInteractive !== true;
 
   for (const input of INPUTS) {
+    // Topology-tagged inputs apply to one topology only (see the `topology` input above).
+    if (input.topology && input.topology !== (value.topology ?? 'store')) continue;
     const flagValue = readFlagWithAliases(argv, input);
     if (isProvided(flagValue)) {
       setDotted(value, input.key, flagValue);
@@ -201,7 +246,7 @@ export async function resolveInputs({ argv, config, env, tty, nonInteractive, as
       continue;
     }
 
-    if (canPrompt && typeof ask === 'function') {
+    if (canPrompt && input.prompt !== false && typeof ask === 'function') {
       const answer = await ask({ key: input.key, question: input.question, default: input.default });
       if (isProvided(answer)) {
         setDotted(value, input.key, answer);

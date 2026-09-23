@@ -12,7 +12,8 @@ function makeRepo() {
   const repoRoot = mkdtempSync(join(tmpdir(), 'serpens-sdd-portfacts-'));
   mkdirSync(join(repoRoot, 'openspec', 'specs'), { recursive: true });
   mkdirSync(join(repoRoot, 'openspec', 'changes'), { recursive: true });
-  writeFileSync(join(repoRoot, 'openspec', 'repo.txt'), 'store\n');
+  mkdirSync(join(repoRoot, 'serpens'), { recursive: true });
+  writeFileSync(join(repoRoot, 'serpens', 'repo.txt'), 'store\n');
   return repoRoot;
 }
 
@@ -56,7 +57,8 @@ test('verify-docs fails while port-facts.md holds an UNFILLED marker', async () 
     storeRoot: repoRoot,
     repositorySource: 'manual',
   });
-  writeFileSync(join(repoRoot, 'port-facts.md'), text, 'utf8');
+  mkdirSync(join(repoRoot, 'serpens'), { recursive: true });
+  writeFileSync(join(repoRoot, 'serpens', 'port-facts.md'), text, 'utf8');
 
   const result = await runVerifyDocs({ repoRoot });
   assert.equal(result.ok, false);
@@ -96,7 +98,8 @@ test('verify-docs passes once the markers are replaced', async () => {
     'fast: `npm test`; slow: `npm run test:e2e`.',
     '',
   ].join('\n');
-  writeFileSync(join(repoRoot, 'port-facts.md'), filled, 'utf8');
+  mkdirSync(join(repoRoot, 'serpens'), { recursive: true });
+  writeFileSync(join(repoRoot, 'serpens', 'port-facts.md'), filled, 'utf8');
 
   const result = await runVerifyDocs({ repoRoot });
   assert.equal(result.ok, true, result.output);
@@ -183,7 +186,8 @@ test('a store signalled by .openspec-store/store.yaml PASSES once port-facts.md 
     'fast: `npm test`; slow: `npm run test:e2e`.',
     '',
   ].join('\n');
-  writeFileSync(join(repoRoot, 'port-facts.md'), filled, 'utf8');
+  mkdirSync(join(repoRoot, 'serpens'), { recursive: true });
+  writeFileSync(join(repoRoot, 'serpens', 'port-facts.md'), filled, 'utf8');
 
   const result = await runVerifyDocs({ repoRoot });
   assert.equal(result.ok, true, result.output);

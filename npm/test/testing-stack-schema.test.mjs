@@ -1,4 +1,4 @@
-// The gate on `docs/testing-stack.md` itself. Three defects are pinned here, all reproduced
+// The gate on `serpens/testing-stack.md` itself. Three defects are pinned here, all reproduced
 // before they were fixed:
 //
 //  1. an ABSENT file passed verify-docs everywhere — so a repository whose two tester-facing
@@ -230,15 +230,15 @@ function gitRepo() {
   return dir;
 }
 
-/** A repository shaped like an onboarded spoke: the kit's templates/ is what marks it one. */
+/** A repository shaped like an onboarded spoke: the kit's serpens/templates/ marks it one. */
 function onboardedSpoke({ withDoc }) {
   const dir = gitRepo();
-  mkdirSync(join(dir, 'templates'), { recursive: true });
+  mkdirSync(join(dir, 'serpens', 'templates'), { recursive: true });
   const template = templateOf('en');
-  writeFileSync(join(dir, 'templates', 'testing-stack.md'), template, 'utf8');
+  writeFileSync(join(dir, 'serpens', 'templates', 'testing-stack.md'), template, 'utf8');
   if (withDoc) {
-    mkdirSync(join(dir, 'docs'), { recursive: true });
-    writeFileSync(join(dir, 'docs', 'testing-stack.md'), withDoc === 'filled'
+    mkdirSync(join(dir, 'serpens'), { recursive: true });
+    writeFileSync(join(dir, 'serpens', 'testing-stack.md'), withDoc === 'filled'
       ? fillTestingStackText(renderTestingStack(template))
       : renderTestingStack(template), 'utf8');
   }
@@ -254,7 +254,7 @@ async function testingStackVerdict(repoRoot, opts = {}) {
   return { ok: result.ok, text: `${result.evidence.join('\n')}\n${result.output}` };
 }
 
-test('DEFECT 1: an ABSENT docs/testing-stack.md now FAILS in an onboarded repository', async () => {
+test('DEFECT 1: an ABSENT serpens/testing-stack.md now FAILS in an onboarded repository', async () => {
   const dir = onboardedSpoke({ withDoc: null });
   const { ok, text } = await testingStackVerdict(dir);
   assert.equal(ok, false, 'two commands with nothing to read is not "unaffected"');
@@ -277,7 +277,8 @@ test('a repository the kit was never onboarded into is untouched by the rule', a
 test('the STORE is exempt — testing-stack.md is spoke-only', async () => {
   const dir = onboardedSpoke({ withDoc: null });
   writeFileSync(join(dir, 'project-repositories.json'), '{}\n', 'utf8');
-  writeFileSync(join(dir, 'port-facts.md'), 'STATUS: DONE\n', 'utf8');
+  mkdirSync(join(dir, 'serpens'), { recursive: true });
+  writeFileSync(join(dir, 'serpens', 'port-facts.md'), 'STATUS: DONE\n', 'utf8');
   const { ok } = await testingStackVerdict(dir);
   assert.equal(ok, true);
   rmSync(dir, { recursive: true, force: true });
@@ -302,8 +303,8 @@ test('an unanswered file FAILS and a fully answered one PASSES, naming the open 
   assert.equal(gated.ok, false);
   assert.match(gated.text, /`request-client`/);
 
-  writeFileSync(join(dir, 'docs', 'testing-stack.md'),
-    fillTestingStackText(readFileSync(join(dir, 'docs', 'testing-stack.md'), 'utf8')), 'utf8');
+  writeFileSync(join(dir, 'serpens', 'testing-stack.md'),
+    fillTestingStackText(readFileSync(join(dir, 'serpens', 'testing-stack.md'), 'utf8')), 'utf8');
   const ungated = await testingStackVerdict(dir);
   assert.equal(ungated.ok, true, ungated.text);
   assert.match(ungated.text, /every required section present, every slot answered/);

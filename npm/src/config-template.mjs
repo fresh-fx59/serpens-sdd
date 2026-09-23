@@ -18,10 +18,27 @@ export const DEFAULT_OPENSPEC_INVOCATION = `npx @fission-ai/openspec@^${SUPPORTE
  * <path>` reads exactly this shape back in. `schema_version` is numeric here (never a string),
  * matching what `validateConfig` actually expects — a JSON string value would otherwise make
  * this template fail its own validator.
+ * With `topology: 'repo-local'` (step 6, gap 3) it returns the single-repository shape instead:
+ * `topology` + `repo:` and NO `store:`/`repositories:` keys — validateConfig forbids both there.
  * @param {string} lang - Language tag, e.g. 'en'
+ * @param {{topology?: 'store'|'repo-local'}} [opts]
  * @returns {string}
  */
-export function configTemplate(lang = 'en') {
+export function configTemplate(lang = 'en', { topology = 'store' } = {}) {
+  if (topology === 'repo-local') {
+    return `${JSON.stringify({
+      schema_version: 1,
+      topology: 'repo-local',
+      project: 'my-project',
+      lang,
+      port: 'claude',
+      port_scope: 'auto',
+      openspec: { invocation: DEFAULT_OPENSPEC_INVOCATION },
+      serpens_sdd: { invocation: SHIM_INVOCATION },
+      repo: { root: '.', name: 'my-project', base_branch: 'main' },
+      facts: { forge: 'anything', tracker: 'anything', repository_source: 'manual' },
+    }, null, 2)}\n`;
+  }
   const obj = {
     schema_version: 1,
     project: 'my-project',

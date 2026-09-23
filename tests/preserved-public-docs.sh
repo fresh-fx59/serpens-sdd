@@ -11,9 +11,13 @@
 # Format is deliberately flat (space-separated, single-quoted) so both a bash `source` and a
 # small regex-based Node parser can read it without a shell subprocess or a new dependency.
 
-# Per-kit docs/ filenames preserved verbatim (four per language: en/docs/, ru/docs/).
+# Per-kit docs/ filenames preserved verbatim (three per language: en/docs/, ru/docs/).
 PRESERVED_PUBLIC_DOC_NAMES='FLOW.md FLOW-TABLE.md FLOW-SCHEMA.md'
-# Glob (shell `case` pattern) form for the one name that is not a fixed literal.
-PRESERVED_PUBLIC_DOC_GLOBS='MIGRATION-*-to-current.md'
+# Glob (shell `case` pattern) form list. Empty since 2026-09-21: MIGRATION-*-to-current.md
+# (the rename-era migration guide) is retired — @fresh-fx59/corp-sdd was never published to
+# npm, so there was never an installed base to migrate off, and the guide had no reader.
+PRESERVED_PUBLIC_DOC_GLOBS=''
 # Repo-root files (relative to the public repo root, outside any kit) preserved verbatim.
-PRESERVED_PUBLIC_ROOT_FILES='docs/RENAME.md docs/index.html docs/common-contract.html'
+# docs/RENAME.md dropped 2026-09-21: it existed only to narrate the corp-sdd -> serpens-sdd
+# rename, which the operator wants gone, not preserved.
+PRESERVED_PUBLIC_ROOT_FILES='docs/index.html docs/common-contract.html'

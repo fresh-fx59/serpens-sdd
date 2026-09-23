@@ -42,6 +42,7 @@ const TOOL_PURPOSES = {
   version: 'Print the installed kit edition/version',
   uninstall: 'Reverse a serpens-sdd install; dry-run by default, --apply to execute',
   'opsx-sync': "Re-run `openspec update` for a relocated port (e.g. gigacode) and relocate the refresh; dry-run by default, --apply to execute",
+  'check-schema': 'Entry precondition: stop if the OpenSpec schema in effect is not the built-in spec-driven one',
 };
 
 /**

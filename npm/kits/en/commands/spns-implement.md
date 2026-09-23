@@ -16,6 +16,8 @@ spns-debugging (any unexpected failure), spns-drill-down (any fact about the sys
    satisfied there — never create it. A `blocked` state means something ELSE is genuinely missing:
    stop and run `spns-plan`. Use it for state only; the Serpens TDD cycle below is the
    implementation authority, and no OpenSpec guidance overrides it.
+0. SCHEMA GATE, first, always. Run `<serpens-sdd> check-schema`. If it exits non-zero, STOP — do not read further, do not create anything — and report its output verbatim to the analyst; it names the unsupported schema, exactly where it was found, and that support is a deferred follow-up (see spec-skipspecs-and-custom-schemas-2026-09-11.md item 4b).
+
 1. Read tasks.md state header + research.md FIRST — resume, never re-derive.
 2. If design.md/tasks.md are missing or stale (index digest changed): regenerate them
    now against current code (plans are disposable, specs are durable).

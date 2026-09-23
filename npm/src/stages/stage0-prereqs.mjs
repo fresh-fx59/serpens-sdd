@@ -1,6 +1,7 @@
 import { proveOpenspec } from '../config.mjs';
 import { splitInvocation } from '../invocation.mjs';
 import { SUPPORTED_MINORS } from '../openspecversion.mjs';
+import { detectUnsupportedSchema, buildSchemaGateError } from '../schemagate.mjs';
 
 // The required tools, their exact version probe, and the floor each must clear. ONE table, read
 // by both the real run and `--dry-run`'s plan, so the printed plan cannot drift from what an
@@ -60,8 +61,22 @@ function atLeast(pair, [wantMajor, wantMinor]) {
  * @returns {Promise<{ok: boolean, evidence: string[], error?: string, exitCode?: number}>}
  */
 export async function stage0(ctx) {
-  const { config, run, log, dryRun = false } = ctx;
+  const { config, run, log, dryRun = false, repoRoot } = ctx;
   const evidence = [];
+
+  // Schema gate (item 4b, Option C): a project-local custom OpenSpec schema is not yet
+  // supported (src/schemagate.mjs). Detected by a plain file read — no subprocess, no
+  // dependency on `openspec` being on PATH — so it runs the same way in --dry-run and for
+  // real, and BEFORE the dry-run early-return below so a dry run's plan reports it too.
+  // Runs first, before any tool is even probed: nothing has been written yet either way.
+  if (repoRoot) {
+    const schemaDetection = detectUnsupportedSchema(repoRoot);
+    if (!schemaDetection.ok) {
+      const error = buildSchemaGateError(schemaDetection);
+      evidence.push(`schema gate: ${error}`);
+      return { ok: false, evidence, error, exitCode: 3 };
+    }
+  }
 
   if (dryRun) {
     evidence.push('dry-run: stage0 would run (and execute nothing now):');

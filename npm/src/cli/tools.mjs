@@ -148,6 +148,9 @@ export function buildCommandTable() {
     // port whose OpenSpec artifacts live under a RELOCATED agent_dir (openspec_tool set — e.g.
     // GigaCode) and relocates the refreshed output again. Same CLI-layer shape as `uninstall`.
     'opsx-sync': 'opsx-sync.mjs',
+    // 'check-schema' (item 4b, Option C): the shared entry-precondition kit commands run
+    // before doing anything else — same CLI-layer shape as `uninstall`/`opsx-sync`.
+    'check-schema': 'check-schema.mjs',
     ...Object.fromEntries(Object.keys(TOOL_COMMANDS).map((name) => [name, 'tools.mjs'])),
   };
 }

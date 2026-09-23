@@ -7,6 +7,8 @@ You are drafting the spec for story {{args}}.
 resolved.
 Follow skills spns-drill-down (all system facts) and spns-verification (all done-claims).
 
+0. SCHEMA GATE, first, always. Run `<serpens-sdd> check-schema`. If it exits non-zero, STOP — do not read further, do not create anything — and report its output verbatim to the analyst; it names the unsupported schema, exactly where it was found, and that support is a deferred follow-up (see spec-skipspecs-and-custom-schemas-2026-09-11.md item 4b).
+
 1. READ + INTERVIEW, once. Fetch the story, wiki pages, and attachments through the configured
    tracker/wiki integration. If it is unavailable, use the user-provided export and mark missing
    evidence; never invent it. In every selected repository, set

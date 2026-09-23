@@ -31,6 +31,8 @@ invocation setup resolved.
    the per-artifact and per-task confirmations — `skipped` (for example `specs`, under a change
    whose `.openspec.yaml` sets `skip_specs: true`) counts as satisfied there too, and creating a
    skipped artifact is forbidden; the status check already answered them.
+0. SCHEMA GATE, first, always. Run `<serpens-sdd> check-schema`. If it exits non-zero, STOP — do not read further, do not create anything — and report its output verbatim to the analyst; it names the unsupported schema, exactly where it was found, and that support is a deferred follow-up (see spec-skipspecs-and-custom-schemas-2026-09-11.md item 4b).
+
 1. Run `<serpens-sdd> verify-docs`, then
    `<openspec> validate <change-id> --type change --strict --json`; fix until verify-docs is green
    and the CLI reports `"valid": true`. The CLI is the authority on delta-spec grammar — the lint

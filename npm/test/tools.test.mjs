@@ -26,12 +26,14 @@ test('every TOOL_COMMANDS key is dispatchable: buildCommandTable (used by bin/se
   // 'opsx-sync' (spec-openspec-coexistence-2026-09-22.md): re-syncs a relocated port's OpenSpec
   // artifacts, same CLI-layer pattern as uninstall/verify-docs.
   assert.equal(table['opsx-sync'], 'opsx-sync.mjs');
+  // 'check-schema' (item 4b, Option C): the shared entry precondition, same CLI-layer pattern.
+  assert.equal(table['check-schema'], 'check-schema.mjs');
   for (const name of Object.keys(TOOL_COMMANDS)) {
     assert.equal(table[name], 'tools.mjs', `${name} missing from buildCommandTable()`);
   }
   // and nothing extra: table has exactly TOOL_COMMANDS' keys plus 'help', 'verify-docs',
-  // 'uninstall', 'opsx-sync'
-  assert.equal(Object.keys(table).length, Object.keys(TOOL_COMMANDS).length + 4);
+  // 'uninstall', 'opsx-sync', 'check-schema'
+  assert.equal(Object.keys(table).length, Object.keys(TOOL_COMMANDS).length + 5);
 });
 
 test('a name not in TOOL_COMMANDS fails cleanly from toolPath, not silently', () => {

@@ -902,3 +902,38 @@ test('repo-local: --only 4 is refused (no such stage), and a store: key is a con
   assert.match(captured, /store: is not allowed with topology repo-local/);
   assert.equal(existsSync(join(fixture.repoRoot, 'serpens')), false, 'nothing written on either refusal');
 });
+
+// Item 4b, Option C — the schema gate (src/schemagate.mjs), exercised the same way the
+// unsupported-OpenSpec-version gate above is: a real `init` run against a fixture repo whose
+// `openspec/` already resolves a schema serpens-sdd does not support must write NOTHING at
+// all, exit 3, and print the bilingual STOP message naming the schema and where it was found.
+test('a project-local custom schema is caught by init and writes nothing at all', async () => {
+  const fixture = makeFixture();
+  mkdirSync(join(fixture.repoRoot, 'openspec'), { recursive: true });
+  writeFileSync(join(fixture.repoRoot, 'openspec', 'config.yaml'), 'schema: acme-flow\n');
+
+  assert.equal(existsSync(fixture.storeRoot), false);
+  const before = snapshotDir(fixture.root);
+
+  const savedWrite = process.stderr.write.bind(process.stderr);
+  let stderr = '';
+  process.stderr.write = (chunk, ...rest) => { stderr += chunk; return savedWrite(chunk, ...rest); };
+  let code;
+  try {
+    code = await runInit(fixture);
+  } finally {
+    process.stderr.write = savedWrite;
+  }
+
+  assert.equal(code, 3, 'an unsupported schema must be exit 3');
+  assert.match(stderr, /acme-flow/, 'the schema id must be named');
+  assert.match(stderr, /openspec\/config\.yaml/, 'where it was found must be named');
+  assert.match(stderr, /not yet supported/);
+  assert.match(stderr, /follow-up/);
+  // bilingual: the Russian half must be present too
+  assert.match(stderr, /схем/i);
+
+  assert.equal(existsSync(fixture.storeRoot), false, 'the store must never be created');
+  const after = snapshotDir(fixture.root);
+  assert.deepEqual(after, before, 'the target directory must be byte-for-byte unchanged (minus the openspec/ fixture we planted)');
+});

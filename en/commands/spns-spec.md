@@ -45,8 +45,8 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
       ```bash
       BRANCH=$(<serpens-sdd> git-naming --print-contract <TICKET> | awk -F'\t' '$1=="branch-example"{print $2}')
       ```
-      Use `$BRANCH` verbatim everywhere below. Never assemble a branch name yourself, never assume
-      it starts with `feature/`, and never add a description suffix — a name you invented fails the
+      Use `$BRANCH` verbatim everywhere below. Never assemble a branch name yourself, never assume any
+      prefix, and never add a description suffix — a name you invented fails the
       pre-push guard and the push is rejected. A non-zero exit here means the shop's conventions
       file is broken: report it and stop, rather than falling back to a guess.
    c. WHERE YOU ARE. The branch may already exist, and you may already be on it. Look first:

@@ -12,6 +12,7 @@ import {
   renameStoreReference, declareContextCatalog, declareArtifactRules, renderContextCatalog,
   verifyOnlyAdded,
 } from '../src/openspecconfig.mjs';
+import { requirePyyaml } from './helpers/prereqs.mjs';
 
 const ID = 'acme-store';
 const REMOTE = 'git@forge:acme/store.git';
@@ -36,7 +37,8 @@ function assertValidYaml(text, message) {
 // ---------------------------------------------------------------------------
 // THE BUG. Reproduced on a real repository before this module existed.
 
-test('THE BUG: the word "references:" in the user\'s context prose no longer corrupts the file', () => {
+test('THE BUG: the word "references:" in the user\'s context prose no longer corrupts the file', (t) => {
+  if (requirePyyaml(t)) return;
   // Verbatim shape from the reproduction: a populated OpenSpec context pack whose prose happens
   // to contain the word. The old code's includes() matched it, findIndex() returned -1, and
   // splice(-1 + 1) wrote the entry at the TOP of the file, making it invalid YAML and silently
@@ -70,7 +72,8 @@ test('THE BUG: the word "references:" in the user\'s context prose no longer cor
 // ---------------------------------------------------------------------------
 // The ordinary cases.
 
-test('a stock `openspec init` config — mostly commented-out examples — is handled', () => {
+test('a stock `openspec init` config — mostly commented-out examples — is handled', (t) => {
+  if (requirePyyaml(t)) return;
   // Verbatim from `openspec init --tools claude` on 1.12.0: the commented examples include the
   // literal text "#   rules:" and "#     proposal:", which must not read as keys.
   const before = [
@@ -94,7 +97,8 @@ test('a stock `openspec init` config — mostly commented-out examples — is ha
   assert.deepEqual(assertValidYaml(r.text, 'stock config stays valid'), ['references', 'schema']);
 });
 
-test('an existing block-style `references:` gets the entry inserted under it, in order', () => {
+test('an existing block-style `references:` gets the entry inserted under it, in order', (t) => {
+  if (requirePyyaml(t)) return;
   const before = 'schema: spec-driven\nreferences:\n  - id: first\n    remote: git@f:o/first.git\ncontext: |\n  prose\n';
   const r = declare(before);
   assert.equal(r.action, 'inserted', r.reason);
@@ -122,7 +126,8 @@ test('declaring the same store twice is a no-op, decided on parsed ids not a sub
   assert.equal(declare(decoy).action, 'appended');
 });
 
-test('a file that ENDS inside a block scalar is not swallowed', () => {
+test('a file that ENDS inside a block scalar is not swallowed', (t) => {
+  if (requirePyyaml(t)) return;
   const before = 'schema: spec-driven\ncontext: |\n  line one\n  line two';
   const r = declare(before);
   assert.equal(r.action, 'appended', r.reason);
@@ -131,7 +136,8 @@ test('a file that ENDS inside a block scalar is not swallowed', () => {
   assert.ok(r.text.includes('  line two'), 'the last prose line survives');
 });
 
-test('an empty file, and a file with only a document marker', () => {
+test('an empty file, and a file with only a document marker', (t) => {
+  if (requirePyyaml(t)) return;
   for (const before of ['', '\n', '---\n']) {
     const r = declare(before);
     assert.equal(r.action, 'appended', `${JSON.stringify(before)}: ${r.reason}`);
@@ -228,7 +234,8 @@ test('inspectConfig never reports a key that lives inside a block scalar', () =>
 // The two further corruptions `codex exec` found in this same write, both reproduced against
 // OpenSpec 1.12's own parser before being fixed.
 
-test('a remote containing " #" is QUOTED, not silently truncated into a comment', () => {
+test('a remote containing " #" is QUOTED, not silently truncated into a comment', (t) => {
+  if (requirePyyaml(t)) return;
   const r = declareStoreReference('schema: spec-driven\ncontext: |\n  pack\n', ID, 'git@f:o/r.git #frag');
   assert.equal(r.action, 'appended', r.reason);
   assert.match(r.text, /remote: 'git@f:o\/r\.git #frag'/,
@@ -236,7 +243,8 @@ test('a remote containing " #" is QUOTED, not silently truncated into a comment'
   assertValidYaml(r.text, 'a quoted remote keeps the document valid');
 });
 
-test('a remote containing ": " is QUOTED, not left to break the whole document', () => {
+test('a remote containing ": " is QUOTED, not left to break the whole document', (t) => {
+  if (requirePyyaml(t)) return;
   // Unquoted this produced "Nested mappings are not allowed in compact mappings", and OpenSpec
   // responded by WARNING AND IGNORING THE ENTIRE CONFIG — so a bad remote cost the user their
   // context pack and their rules.
@@ -257,7 +265,8 @@ test('an ordinary remote stays unquoted — quoting is applied only where it is 
 // The contract is the ROUND TRIP, not a quoting style — a quote only matters at the START of a
 // plain scalar, so `it's` mid-value needs none. Assert what OpenSpec reads back, not how we
 // wrote it, or the test dictates an implementation instead of a behaviour.
-test('every awkward remote round-trips through a real YAML parser unchanged', () => {
+test('every awkward remote round-trips through a real YAML parser unchanged', (t) => {
+  if (requirePyyaml(t)) return;
   const remotes = [
     'git@forge:acme/store.git',
     'https://forge/acme/store.git',
@@ -308,7 +317,8 @@ test('resolveConfigPath edits the file OpenSpec would READ — .yaml wins, else 
 // renameStoreReference — the other half of store-id adoption
 // ---------------------------------------------------------------------------------------------
 
-test('renameStoreReference rewrites both entry shapes and touches nothing else', () => {
+test('renameStoreReference rewrites both entry shapes and touches nothing else', (t) => {
+  if (requirePyyaml(t)) return;
   // The `note: |` block is the trap: its prose contains a line that is byte-identical to a
   // plain-string reference entry. Only the block-scalar tracking in inspectConfig keeps the
   // rename off it — drop that guard and this fixture's prose gets rewritten too.
@@ -365,7 +375,8 @@ test('renameStoreReference is a no-op when the old id is not declared, and refus
 // F1 — the rename is anchored to the references block's OWN indentation
 // ---------------------------------------------------------------------------------------------
 
-test('renameStoreReference leaves a nested sequence inside an entry alone — it is not a reference', () => {
+test('renameStoreReference leaves a nested sequence inside an entry alone — it is not a reference', (t) => {
+  if (requirePyyaml(t)) return;
   // The negative-control fixture: `notes:` belongs to the first entry, and its items are NOT
   // reference entries. Nothing here is a block scalar, so the only thing that can keep the
   // rename off `- old-store` is anchoring to the block's own indentation.
@@ -426,7 +437,8 @@ function parsedFirstReferenceId(text) {
   return JSON.parse(out);
 }
 
-test('a YAML-special id is QUOTED on rewrite, so the reference is not silently turned into a boolean', () => {
+test('a YAML-special id is QUOTED on rewrite, so the reference is not silently turned into a boolean', (t) => {
+  if (requirePyyaml(t)) return;
   for (const special of ['no', 'yes', 'on', 'off', 'null', 'y', 'N', 'true']) {
     const mapping = renameStoreReference('schema: default\nreferences:\n  - id: old-store\n', 'old-store', special);
     assert.equal(mapping.action, 'renamed', `${special}: ${mapping.reason}`);
@@ -441,7 +453,8 @@ test('a YAML-special id is QUOTED on rewrite, so the reference is not silently t
   }
 });
 
-test('a YAML-special id is QUOTED when the entry is first declared, too', () => {
+test('a YAML-special id is QUOTED when the entry is first declared, too', (t) => {
+  if (requirePyyaml(t)) return;
   const r = declareStoreReference('schema: default\n', 'off', REMOTE);
   assert.equal(r.action, 'appended', r.reason);
   assert.equal(parsedFirstReferenceId(r.text), 'off');
@@ -492,7 +505,8 @@ test('the catalog never tells the agent to read every file', () => {
   for (const e of CATALOG) assert.ok(body.includes(e.path) && body.includes(e.answers));
 });
 
-test('context: is appended as a block scalar and parses as the prose OpenSpec expects', () => {
+test('context: is appended as a block scalar and parses as the prose OpenSpec expects', (t) => {
+  if (requirePyyaml(t)) return;
   const before = 'schema: spec-driven\nreferences:\n  - id: acme-store\n';
   const r = declareContextCatalog(before, CATALOG);
   assert.equal(r.action, 'appended');
@@ -515,7 +529,8 @@ test("a user's own context: is never rewritten", () => {
   assert.match(r.manual, /serpens\/testing-stack\.md/);
 });
 
-test('rules: is keyed by artifact, so each stage gets only the facts it needs', () => {
+test('rules: is keyed by artifact, so each stage gets only the facts it needs', (t) => {
+  if (requirePyyaml(t)) return;
   const before = 'schema: spec-driven\n';
   const r = declareArtifactRules(before, RULES);
   assert.equal(r.action, 'appended');
@@ -549,7 +564,8 @@ test('both keys refuse rather than guess on a config this tool cannot read', () 
 // Gap 5 — a brownfield `rules:` gets our missing artifact ids inserted, id by id, rather than
 // refusing the whole key the way it used to. The user's own ids are never touched.
 
-test('gap 5: existing rules: with one id declared gets the others inserted', () => {
+test('gap 5: existing rules: with one id declared gets the others inserted', (t) => {
+  if (requirePyyaml(t)) return;
   const before = 'schema: spec-driven\nrules:\n  proposal:\n    - Keep it short.\n';
   const r = declareArtifactRules(before, RULES);
   assert.equal(r.action, 'inserted');
@@ -575,7 +591,8 @@ test('gap 5: every id already declared under rules: → unchanged, byte-identica
   assert.deepEqual(r.perId, { design: 'unchanged', tasks: 'unchanged' });
 });
 
-test('gap 5: rules: followed by another top-level key → insertion lands before that key', () => {
+test('gap 5: rules: followed by another top-level key → insertion lands before that key', (t) => {
+  if (requirePyyaml(t)) return;
   const before = 'schema: spec-driven\nrules:\n  proposal:\n    - Keep it short.\noperations:\n  apply:\n    guidance:\n      - Ship behind a flag.\n';
   const r = declareArtifactRules(before, RULES);
   assert.equal(r.action, 'inserted');
@@ -632,7 +649,8 @@ test('gap 5: verifyOnlyAdded rejects an edit that altered one user byte (negativ
   assert.match(check.reason, /surrounding content changed/);
 });
 
-test('a rule value that YAML would coerce is quoted, not lost', () => {
+test('a rule value that YAML would coerce is quoted, not lost', (t) => {
+  if (requirePyyaml(t)) return;
   const r = declareArtifactRules('schema: spec-driven\n', { tasks: ['yes'] });
   const out = execFileSync('python3', ['-c',
     'import sys,yaml,json; print(json.dumps(yaml.safe_load(sys.stdin)["rules"]["tasks"]))'],
@@ -641,7 +659,8 @@ test('a rule value that YAML would coerce is quoted, not lost', () => {
   assert.deepEqual(JSON.parse(out), ['yes']);
 });
 
-test('the catalog and the rules compose without disturbing what is already there', () => {
+test('the catalog and the rules compose without disturbing what is already there', (t) => {
+  if (requirePyyaml(t)) return;
   const before = 'schema: spec-driven\noperations:\n  apply:\n    guidance:\n      - Ship behind a flag.\n';
   const a = declareContextCatalog(before, CATALOG);
   const b = declareArtifactRules(a.text, RULES);

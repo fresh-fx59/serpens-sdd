@@ -14,6 +14,7 @@ import { stage3 } from '../src/stages/stage3-store.mjs';
 import { kitPath } from '../src/integrity.mjs';
 import { makeBareRemote, fakeOpenspec } from './helpers/fixture.mjs';
 import { realOpenspec, realRegistrySnapshot, realRegistryPath, assertRegistryIsolated } from './helpers/real-openspec.mjs';
+import { requireOpenspec } from './helpers/prereqs.mjs';
 
 // Acceptance for spec-openspec-store-registration-2026-09-11, §5 as amended by §7.
 //
@@ -158,7 +159,8 @@ function ctxFor(oss, { storeRoot, storeId, configPath, dryRun = false, ...rest }
 // ---------------------------------------------------------------------------------------------
 // §5.1 — fresh store, nothing registered
 // ---------------------------------------------------------------------------------------------
-test('fresh store: registered, .openspec-store/store.yaml created AND committed, and store list proves our path', async () => {
+test('fresh store: registered, .openspec-store/store.yaml created AND committed, and store list proves our path', async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const storeRoot = makeRealStore(oss);
   const headBefore = execFileSync('git', ['-C', storeRoot, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
@@ -193,7 +195,8 @@ test('fresh store: registered, .openspec-store/store.yaml created AND committed,
 // ---------------------------------------------------------------------------------------------
 // §5.2 — re-run is idempotent
 // ---------------------------------------------------------------------------------------------
-test('re-run on the same store: no second registration, no empty commit, ok', async () => {
+test('re-run on the same store: no second registration, no empty commit, ok', async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const storeRoot = makeRealStore(oss);
 
@@ -217,7 +220,8 @@ test('re-run on the same store: no second registration, no empty commit, ok', as
 // ---------------------------------------------------------------------------------------------
 // §5.3 — our id registered at ANOTHER path
 // ---------------------------------------------------------------------------------------------
-test('our id registered at another path: refuses, prints BOTH paths, leaves registry.yaml byte-for-byte unchanged', async () => {
+test('our id registered at another path: refuses, prints BOTH paths, leaves registry.yaml byte-for-byte unchanged', async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const theirs = makeRealStore(oss, { name: 'theirs' });
   const ours = makeRealStore(oss, { name: 'ours' });
@@ -243,7 +247,8 @@ test('our id registered at another path: refuses, prints BOTH paths, leaves regi
 // ---------------------------------------------------------------------------------------------
 // §5.4 — an unrelated store is left alone
 // ---------------------------------------------------------------------------------------------
-test("an unrelated store registered first is still registered, untouched, after our run", async () => {
+test("an unrelated store registered first is still registered, untouched, after our run", async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const unrelated = makeRealStore(oss, { name: 'unrelated' });
   const ours = makeRealStore(oss, { name: 'ours' });
@@ -267,7 +272,8 @@ test("an unrelated store registered first is still registered, untouched, after 
 // ---------------------------------------------------------------------------------------------
 // §7 amended — id adoption, completely, BEFORE the register call
 // ---------------------------------------------------------------------------------------------
-test('committed metadata id X vs config id Y: adopts X before registering, passes no competing --id, and rewrites config AND references', async () => {
+test('committed metadata id X vs config id Y: adopts X before registering, passes no competing --id, and rewrites config AND references', async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const storeRoot = makeRealStore(oss);
   // The store already carries a committed identity — the shared, versioned fact.
@@ -326,7 +332,8 @@ test('committed metadata id X vs config id Y: adopts X before registering, passe
   );
 });
 
-test('adoption re-runs the conflict check under the ADOPTED id: an adopted id already registered elsewhere refuses', async () => {
+test('adoption re-runs the conflict check under the ADOPTED id: an adopted id already registered elsewhere refuses', async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const theirs = makeRealStore(oss, { name: 'theirs' });
   oss.json(['store', 'register', theirs, '--id', 'committed-store', '--yes', '--json']);
@@ -352,7 +359,8 @@ test('adoption re-runs the conflict check under the ADOPTED id: an adopted id al
 // ---------------------------------------------------------------------------------------------
 // §7 amended — a held registry lock
 // ---------------------------------------------------------------------------------------------
-test('a held registry lock: 3 bounded attempts, clean failure, and NO reachable references: entry was written', async () => {
+test('a held registry lock: 3 bounded attempts, clean failure, and NO reachable references: entry was written', async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const storeRoot = makeRealStore(oss);
   // The store's committed identity AGREES with the config id, so adoption has nothing to do and
@@ -459,7 +467,8 @@ test('an OpenSpec without the store subcommand: the stage is skipped and stage 3
 // ---------------------------------------------------------------------------------------------
 // §5.7 — --dry-run executes nothing
 // ---------------------------------------------------------------------------------------------
-test('--dry-run plans the calls and executes no openspec store call at all', async () => {
+test('--dry-run plans the calls and executes no openspec store call at all', async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const storeRoot = makeRealStore(oss);
 
@@ -473,7 +482,8 @@ test('--dry-run plans the calls and executes no openspec store call at all', asy
   assert.equal(existsSync(join(storeRoot, '.openspec-store', 'store.yaml')), false);
 });
 
-test('--offline REGISTERS: it is a filesystem assertion about call routes, not a mode that skips work', async () => {
+test('--offline REGISTERS: it is a filesystem assertion about call routes, not a mode that skips work', async (t) => {
+  if (requireOpenspec(t)) return;
   // `--offline` asserts that every generated call site can reach this package without the
   // registry (src/offline.mjs: "Nothing here executes anything or touches the network"). Skipping
   // registration under it produced the one state this whole step exists to remove: an install
@@ -499,7 +509,8 @@ test('--offline REGISTERS: it is a filesystem assertion about call routes, not a
 // ---------------------------------------------------------------------------------------------
 // §7 amended — the end-to-end proof, with the false positive removed
 // ---------------------------------------------------------------------------------------------
-test('end-to-end: the spoke resolves the named fixture spec under our id at the canonical root, with no reference_unresolved', async () => {
+test('end-to-end: the spoke resolves the named fixture spec under our id at the canonical root, with no reference_unresolved', async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const storeRoot = makeRealStore(oss);
   const { spokeRoot } = makeSpoke(oss, 'acme-store');
@@ -541,7 +552,8 @@ test('end-to-end: the spoke resolves the named fixture spec under our id at the 
 // The metadata commit publishes the metadata — and nothing else
 // ---------------------------------------------------------------------------------------------
 
-test('the identity commit carries ONLY .openspec-store/store.yaml, whatever else is staged in the worktree', async () => {
+test('the identity commit carries ONLY .openspec-store/store.yaml, whatever else is staged in the worktree', async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const storeRoot = makeRealStore(oss);
 
@@ -591,7 +603,8 @@ test('the identity commit carries ONLY .openspec-store/store.yaml, whatever else
 // A push that failed must be repairable by re-running
 // ---------------------------------------------------------------------------------------------
 
-test('a failed push is retried on the NEXT run, which makes no commit of its own', async () => {
+test('a failed push is retried on the NEXT run, which makes no commit of its own', async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const storeRoot = makeRealStore(oss);
   const origin = giveOrigin(storeRoot);
@@ -629,7 +642,8 @@ test('a failed push is retried on the NEXT run, which makes no commit of its own
 // Store metadata we do not understand is a refusal, never an adoption
 // ---------------------------------------------------------------------------------------------
 
-test('store metadata with an unknown version is REFUSED before anything is adopted', async () => {
+test('store metadata with an unknown version is REFUSED before anything is adopted', async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const storeRoot = makeRealStore(oss);
   // Upstream pins the schema with `z.literal(1)` and rejects anything else as
@@ -659,7 +673,8 @@ test('store metadata with an unknown version is REFUSED before anything is adopt
   assert.equal(oss.json(['store', 'list', '--json']).stores.length, 0);
 });
 
-test('store metadata with NO version at all is refused, and says so in those words', async () => {
+test('store metadata with NO version at all is refused, and says so in those words', async (t) => {
+  if (requireOpenspec(t)) return;
   // `MetadataStateSchema` requires the key; a file without it is as unreadable to OpenSpec as one
   // carrying a version from the future, but the fix a user needs is a different one, so the
   // refusal has to tell them which case they are in.
@@ -681,7 +696,8 @@ test('store metadata with NO version at all is refused, and says so in those wor
 // A half-adopted id must be finished by the next run
 // ---------------------------------------------------------------------------------------------
 
-test('a half-adopted id is finished by the next run — the condition is the reference entries, not the config field', async () => {
+test('a half-adopted id is finished by the next run — the condition is the reference entries, not the config field', async (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   const storeRoot = makeRealStore(oss);
   commitMetadata(storeRoot, 'version: 1\nid: committed-store\n');
@@ -716,7 +732,8 @@ test('a half-adopted id is finished by the next run — the condition is the ref
   );
 });
 
-test('a partial adoption caused by a QUOTED reference entry is repaired, not reported as success', async () => {
+test('a partial adoption caused by a QUOTED reference entry is repaired, not reported as success', async (t) => {
+  if (requireOpenspec(t)) return;
   // The reviewer's reproduction, without any crash: run 1 writes the config, then the rewrite of
   // a quoted entry refuses, and run 2 sees "already adopted" and sails past it.
   const oss = realOpenspec();

@@ -9,6 +9,7 @@ import { join } from 'node:path';
 import initMain from '../src/cli/init.mjs';
 import uninstallMain from '../src/cli/uninstall.mjs';
 import { realOpenspec } from './helpers/real-openspec.mjs';
+import { requireOpenspec, requireLefthook } from './helpers/prereqs.mjs';
 
 // investigation-store-uninstall-test-2026-09-23.md §5.2 — the real, offline, end-to-end proof
 // that store-topology uninstall leaves NOTHING Serpens-created behind, against the REAL
@@ -19,26 +20,16 @@ import { realOpenspec } from './helpers/real-openspec.mjs';
 // cannot: fixture test drives the CLI's own logic; this drives real git submodule adds, a real
 // `openspec init`/`store register`, and a real `lefthook install`/`uninstall`.
 //
-// THROWS rather than skips when either real binary is missing (matching realOpenspec()'s own
-// contract) — a silently-skipped e2e reads exactly like a pass. `lefthook` on PATH is required;
-// if absent: `brew install lefthook` (Mac) or the fleet's usual package manager (contabo/NixOS).
+// SKIPS with an actionable reason when either real binary is missing (test/helpers/prereqs.mjs)
+// — `brew install lefthook` (Mac) or the fleet's usual package manager (contabo/NixOS) for
+// lefthook, `npx -y @fission-ai/openspec@1.13 --version` for OpenSpec. In CI (or with
+// SERPENS_REQUIRE_ALL_PREREQS=1) a missing binary FAILS instead: a silently-skipped e2e must
+// never read as a pass in the gate that is supposed to catch it.
 //
 // Isolation: HOME and XDG_DATA_HOME both point at a fresh temp dir for the whole run, so the
 // real OpenSpec registry/telemetry at the operator's real $HOME is never touched (checked
 // below). `GIT_ALLOW_PROTOCOL=file:git:http:https` is required for `git submodule add` of a
 // `file://` remote (`git clone` of the store itself does not need it) — investigation §3.
-
-function requireLefthookOnPath() {
-  try {
-    execFileSync('/bin/sh', ['-c', 'command -v lefthook'], { encoding: 'utf8' }).trim();
-  } catch {
-    throw new Error(
-      'No real `lefthook` on PATH. test/store-uninstall-e2e.test.mjs deliberately drives the '
-      + 'real binary (see its header) — install one (e.g. `brew install lefthook` on macOS) '
-      + 'before running this file.',
-    );
-  }
-}
 
 function git(cwd, args) {
   return execFileSync('git', args, { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] });
@@ -96,7 +87,8 @@ function listUnexpectedEntries(root) {
 }
 
 test('real e2e: init then uninstall --apply in store topology leaves nothing Serpens-created behind', async (t) => {
-  requireLefthookOnPath();
+  if (requireLefthook(t)) return;
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   t.diagnostic(`real openspec version ${oss.version}`);
 

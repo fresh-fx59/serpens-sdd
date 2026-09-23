@@ -24,6 +24,7 @@ import { existsSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { realOpenspec } from './helpers/real-openspec.mjs';
+import { requireOpenspec } from './helpers/prereqs.mjs';
 import { kitPath, walk } from '../src/integrity.mjs';
 
 const TOOLS = join(fileURLToPath(new URL('.', import.meta.url)), '..', 'tools');
@@ -40,7 +41,8 @@ function runLint(dir) {
 // 1-2. The real mechanism this feature depends on.
 // ---------------------------------------------------------------------------------------------
 
-test('a skip_specs change: status --json reports specs as skipped, and skipped already satisfies downstream artifacts', () => {
+test('a skip_specs change: status --json reports specs as skipped, and skipped already satisfies downstream artifacts', (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   execFileSync('git', ['init', '-q', '-b', 'develop', oss.dir]);
   execFileSync('git', ['-C', oss.dir, 'config', 'user.email', 'fixture@example.com']);
@@ -78,7 +80,8 @@ test('a skip_specs change: status --json reports specs as skipped, and skipped a
   for (const a of after.artifacts) assert.notEqual(a.status, 'pending');
 });
 
-test('openspec archive succeeds on a skip_specs change with no delta spec, and reports specsUpdated: false', () => {
+test('openspec archive succeeds on a skip_specs change with no delta spec, and reports specsUpdated: false', (t) => {
+  if (requireOpenspec(t)) return;
   const oss = realOpenspec();
   execFileSync('git', ['init', '-q', '-b', 'develop', oss.dir]);
   execFileSync('git', ['-C', oss.dir, 'config', 'user.email', 'fixture@example.com']);
@@ -123,14 +126,16 @@ function makeChangeRepo({ skipSpecs }) {
   return oss.dir;
 }
 
-test('serpens-lint does not fail a change directory with no specs/ when skip_specs: true is set', () => {
+test('serpens-lint does not fail a change directory with no specs/ when skip_specs: true is set', (t) => {
+  if (requireOpenspec(t)) return;
   const dir = makeChangeRepo({ skipSpecs: true });
   const r = runLint(dir);
   assert.equal(r.code, 0, r.out);
   assert.ok(!/no-spec-here/.test(r.out), r.out);
 });
 
-test('serpens-lint stays green on a change freshly scaffolded by the REAL openspec binary', () => {
+test('serpens-lint stays green on a change freshly scaffolded by the REAL openspec binary', (t) => {
+  if (requireOpenspec(t)) return;
   // `openspec new change <id>` succeeds and leaves exactly `.openspec.yaml` behind — no
   // proposal.md, no specs/. Upstream reports `proposal` as `ready` and `specs` as `blocked` on
   // it: a delta spec is not owed yet. Our lint must not fail a change upstream itself would
@@ -164,7 +169,8 @@ test('serpens-lint stays green on a change freshly scaffolded by the REAL opensp
   assert.match(r.out, /unmarked change\(s\) ignored/, r.out);
 });
 
-test('negative control: a change with no skip_specs and no specs/ IS a lint error', () => {
+test('negative control: a change with no skip_specs and no specs/ IS a lint error', (t) => {
+  if (requireOpenspec(t)) return;
   const dir = makeChangeRepo({ skipSpecs: false });
   const r = runLint(dir);
   assert.equal(r.code, 1, 'lint must fail a change that silently has no delta spec');

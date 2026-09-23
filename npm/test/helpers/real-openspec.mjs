@@ -64,11 +64,11 @@ export function findRealOpenspec() {
     return { entry: override, version: 'override', viaPath: true };
   }
   try {
-    const onPath = execFileSync('/bin/sh', ['-c', 'command -v openspec'], { encoding: 'utf8' }).trim();
+    const onPath = execFileSync('/bin/sh', ['-c', 'command -v openspec'], { encoding: 'utf8', timeout: 5000 }).trim();
     if (onPath) {
       // Only accept it if it reports a version inside the window this package supports — a
       // stale `openspec` on PATH must not quietly become the thing the acceptance suite proves.
-      const reported = execFileSync(onPath, ['--version'], { encoding: 'utf8' }).trim();
+      const reported = execFileSync(onPath, ['--version'], { encoding: 'utf8', timeout: 5000 }).trim();
       const m = /(\d+\.\d+\.\d+)/.exec(reported);
       if (m && inWindow(m[1])) return { entry: onPath, version: m[1], viaPath: true };
     }

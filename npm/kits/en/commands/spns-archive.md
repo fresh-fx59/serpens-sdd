@@ -6,27 +6,46 @@ Archive change {{args}}. Follow skill spns-verification (evidence for every step
 `{{args}}` is `<change-id> [--here | --branch <name>]`. The flag chooses WHERE the archive
 commit lands; the rest is the `<change-id>` passed to the archiver. `<openspec>` is the OpenSpec CLI
 invocation setup resolved.
-0. Set `REPO_ROOT="$(git rev-parse --show-toplevel)"`.
-   Precondition, in every mode: the change's PR is merged. Verify it; if it is not, ask the
-   user ONCE — continue here or stop — and follow the answer. Never stop silently.
-   Then place yourself. With no flag, ask the user ONCE which of the three, print the
-   current branch in the question, and wait for the answer — never pick for them:
-   - (1) a fresh story branch from the base: run
-     `<serpens-sdd> state prepare-base`, ask
+0. Set `REPO_ROOT="$(git rev-parse --show-toplevel)"`. Run `<serpens-sdd> delivery --print-contract`
+   to read this estate's `pr-opened-by`. Then check `$REPO_ROOT/.serpens.yaml` for an
+   `archive-when-confirmed:` line; if there is none, ask the user ONCE which this estate uses —
+   `after-merge` (archive as soon as the feature branch merges to the integration branch) or
+   `after-qa-accepted` (wait for the tester's sign-off on the dev stand first) — then run
+   `<serpens-sdd> delivery --confirm-archive-when <value>` to record the answer; never ask again
+   for this estate. `archive-when` gates WHEN you run this command at all, not what it checks
+   below.
+   Precondition, every mode: a human has opened and merged the change request (`forge-word`,
+   from the same contract). Verify it with `<serpens-sdd> state assert-archivable` — never by
+   reading the forge UI, the tracker, or a change-request link; "merged" is judged ONLY by this
+   command's exit code.
+   - `pr-opened-by=human` (default): non-zero exit = not merged. STOP and tell the human exactly
+     which branch still needs merging — paste `<serpens-sdd> delivery --handoff`'s output
+     verbatim. Do NOT open or merge it yourself.
+   - `pr-opened-by=agent`: non-zero exit = not merged. Ask the user ONCE — continue or stop — and
+     follow the answer. Never stop silently.
+   Then place yourself for the close-out commit. With no flag, ask the user ONCE which of the
+   three, print the current branch in the question, and wait for the answer — never pick for
+   them:
+   - (1) a fresh story branch from the base (the close-out mechanism, no extra questions beyond
+     this one regardless of `archive-when` or `merge-style`): run
+     `<serpens-sdd> state prepare-base` — the SAME base-branching mechanism every other command
+     uses, resolved from this estate's `integration-branch` — ask
      `<serpens-sdd> git-naming --print-contract <TICKET>` for the name (`branch-example`), then
      `git checkout -b "$BRANCH"` — recreating the story branch, which the merge usually
-     deleted. Step 5 publishes it and opens a PR. Use the printed name verbatim: the shape is the
-     shop's, it lives in `serpens/branching.md`, and `<serpens-sdd> git-naming` accepts that
-     and nothing else, so a name you assembled yourself — or one with a description suffix — fails
-     the pre-push guard and the push is rejected.
+     deleted. Step 5 pushes it and hands off per `pr-opened-by`. Use the printed name verbatim: the
+     shape is the shop's, it lives in `serpens/branching.md`, and `<serpens-sdd> git-naming` accepts
+     that and nothing else, so a name you assembled yourself — or one with a description suffix —
+     fails the pre-push guard and the push is rejected.
    - (2) a branch you name: the same, using that name — it must still match what
      `--print-contract` reports.
    - (3) here: stay on the current branch and do NOT run `prepare-base`.
    A flag answers the question in advance and skips it: `--branch <name>` is (2), `--here` is (3).
-   Then, in every mode, run `<serpens-sdd> state assert-archivable`;
-   stop on any failure. It proves the tree is clean, there are no stashes, and HEAD already
-   contains the configured base — so the delta cannot fold into stale specs. Do not assume the
-   base is named `main`, `master` or `develop`; the tool resolves it.
+   Then, in every mode, run `<serpens-sdd> state assert-archivable` a second time on the branch you
+   land the commit on; stop on any failure. With `merge-style` configured it proves your OWN
+   recorded hand-off tip actually reached `origin/<integration-branch>` (merge/rebase/squash-keyed,
+   never a generic "not merged"); otherwise it proves the tree is clean, there are no stashes, and
+   HEAD already contains the configured base — so the delta cannot fold into stale specs. Do not
+   assume the base is named `main`, `master` or `develop`; the tool resolves it.
    If the change's status shows every artifact `done` OR `skipped` and every task complete, skip
    the per-artifact and per-task confirmations — `skipped` (for example `specs`, under a change
    whose `.openspec.yaml` sets `skip_specs: true`) counts as satisfied there too, and creating a
@@ -59,8 +78,10 @@ invocation setup resolved.
    but only for the exact paths staged here, so name them explicitly rather than trusting a
    broader `git add` to catch it for you. Commit as
    `docs(<TICKET>): archive {{args}} living spec and ADR`, then push the branch you are on.
-   Default and `--branch` mode: open a PR into the configured base. `--here` mode: the commit
-   rides the branch's existing PR. The store catalog picks this up on its next aggregation — no
-   manual store edits, ever.
+   `--here` mode: the commit rides the branch's existing change request. Default and `--branch`
+   mode: push, then, if `pr-opened-by=human`: run `<serpens-sdd> delivery --handoff` and paste
+   its output to the human verbatim; do NOT create the change request. If `pr-opened-by=agent`:
+   open it. The store catalog picks this up on its next aggregation — no manual store edits,
+   ever.
 6. Post a one-line completion note through the configured tracker integration. If none exists,
    print the exact note for a human to paste.

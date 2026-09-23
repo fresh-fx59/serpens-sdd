@@ -36,9 +36,10 @@ const FULL_CONTRACT = [
   '',
 ].join('\n');
 
-async function delivery(argv, cwd) {
+async function delivery(argv, cwd, extraEnv) {
   const { cmd, args } = resolveTool('delivery', argv);
-  return run(cmd, args, { cwd });
+  const env = extraEnv ? { ...process.env, ...extraEnv } : undefined;
+  return run(cmd, args, { cwd, env });
 }
 
 const DEFAULT_LINES = [
@@ -329,3 +330,114 @@ for (const [lang, path, heading] of [
     }
   });
 }
+
+// ---- §2b item 3: --handoff records the tip; §2c item 12: handoff-to=chat+ticket -----------------
+
+test('--handoff records the pushed HEAD as a handoff-tip in <repo-root>/.serpens.yaml, latest wins', async () => {
+  const origin = mkdtempSync(join(tmpdir(), 'serpens-sdd-delivery-origin-'));
+  execFileSync('git', ['init', '--quiet', '--bare', '-b', 'develop'], { cwd: origin });
+  const repo = makeRepo();
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/SVC-9']);
+  writeFileSync(join(repo, 'x.txt'), 'x\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'x.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(SVC-9): one']);
+  execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/SVC-9']);
+  const tip1 = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+  let result = await delivery(['--handoff'], repo);
+  assert.equal(result.code, 0, result.stderr);
+  let estate = readFileSync(join(repo, '.serpens.yaml'), 'utf8');
+  assert.match(estate, new RegExp(`handoff-tip: feature/SVC-9 ${tip1}`));
+
+  // A second commit + push: the latest tip is recorded too, the first one is kept (not overwritten).
+  writeFileSync(join(repo, 'y.txt'), 'y\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'y.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(SVC-9): two']);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'feature/SVC-9']);
+  const tip2 = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+
+  result = await delivery(['--handoff'], repo);
+  assert.equal(result.code, 0, result.stderr);
+  estate = readFileSync(join(repo, '.serpens.yaml'), 'utf8');
+  assert.match(estate, new RegExp(`handoff-tip: feature/SVC-9 ${tip1}`));
+  assert.match(estate, new RegExp(`handoff-tip: feature/SVC-9 ${tip2}`));
+
+  // Re-running --handoff with HEAD unchanged does not grow the file with a duplicate line.
+  result = await delivery(['--handoff'], repo);
+  assert.equal(result.code, 0, result.stderr);
+  const finalEstate = readFileSync(join(repo, '.serpens.yaml'), 'utf8');
+  const occurrences = finalEstate.split(`handoff-tip: feature/SVC-9 ${tip2}`).length - 1;
+  assert.equal(occurrences, 1, 'an unchanged HEAD must not add a duplicate handoff-tip line');
+});
+
+test('--confirm-archive-when records the estate\'s answer once; a repeat call overwrites, not duplicates', async () => {
+  const repo = makeRepo();
+  let result = await delivery(['--confirm-archive-when', 'after-merge'], repo);
+  assert.equal(result.code, 0, result.stderr);
+  let estate = readFileSync(join(repo, '.serpens.yaml'), 'utf8');
+  assert.match(estate, /^archive-when-confirmed: after-merge$/m);
+
+  result = await delivery(['--confirm-archive-when', 'after-qa-accepted'], repo);
+  assert.equal(result.code, 0, result.stderr);
+  estate = readFileSync(join(repo, '.serpens.yaml'), 'utf8');
+  const lines = estate.split('\n').filter(l => l.startsWith('archive-when-confirmed: '));
+  assert.deepEqual(lines, ['archive-when-confirmed: after-qa-accepted']);
+});
+
+test('--confirm-archive-when rejects a value outside the two allowed', async () => {
+  const repo = makeRepo();
+  const result = await delivery(['--confirm-archive-when', 'sometimes'], repo);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /must be after-merge or after-qa-accepted/);
+});
+
+test('handoff-to=chat+ticket with a stub tracker posts the exact hand-off text as a ticket comment', async () => {
+  const origin = mkdtempSync(join(tmpdir(), 'serpens-sdd-delivery-origin-'));
+  execFileSync('git', ['init', '--quiet', '--bare', '-b', 'develop'], { cwd: origin });
+  const repo = makeRepo();
+  writeDelivery(repo, [
+    '<!-- serpens:section delivery-contract -->',
+    '| `handoff-to` | chat+ticket |',
+    '',
+  ].join('\n'));
+  execFileSync('git', ['-C', repo, 'add', 'serpens/delivery.md']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'chore: delivery contract']);
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/SVC-10']);
+  execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/SVC-10']);
+
+  const capture = join(repo, 'posted.txt');
+  const result = await delivery(['--handoff'], repo, {
+    SERPENS_SDD_TRACKER_CMD: `cat > "${capture}"`,
+  });
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stderr, /posted the hand-off above as a ticket comment/);
+  const posted = readFileSync(capture, 'utf8');
+  assert.match(posted, /^PR is opened by a human in this shop\. Do not create it\.$/m);
+  assert.match(posted, /^Pushed branch: feature\/SVC-10$/m);
+  assert.match(posted, /^Target branch: develop$/m);
+});
+
+test('handoff-to=chat+ticket with NO tracker configured errors naming the gap, never silently falls back to chat-only', async () => {
+  const origin = mkdtempSync(join(tmpdir(), 'serpens-sdd-delivery-origin-'));
+  execFileSync('git', ['init', '--quiet', '--bare', '-b', 'develop'], { cwd: origin });
+  const repo = makeRepo();
+  writeDelivery(repo, [
+    '<!-- serpens:section delivery-contract -->',
+    '| `handoff-to` | chat+ticket |',
+    '',
+  ].join('\n'));
+  execFileSync('git', ['-C', repo, 'add', 'serpens/delivery.md']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'chore: delivery contract']);
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/SVC-11']);
+  execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/SVC-11']);
+
+  const result = await delivery(['--handoff'], repo);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /requires a configured tracker; none found/);
+});

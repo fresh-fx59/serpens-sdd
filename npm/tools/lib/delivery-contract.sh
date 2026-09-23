@@ -344,3 +344,85 @@ dc_resolved_integration_branch() {
   fi
   return 1
 }
+
+# ---- estate state file: <repo-root>/.serpens.yaml -----------------------------------------------
+# spec-org-facts-slice-delivery-2026-09-23.md §2b items 2/3: records facts that must survive
+# across separate `delivery`/`repository-state` invocations and are NOT per-change (that is what
+# the change-directory `.serpens.yaml` marker, written by `repository-state.sh mark-change`,
+# already covers — a different file, same name, different scope, never confused because the
+# change-directory one lives under openspec/changes/<id>/ and this one lives at the repo root):
+#   - handoff-tip: <branch> <sha>       — every tip `delivery --handoff` has ever recorded for a
+#     branch, oldest first; the LATEST one wins for the merged check, earlier ones are kept for
+#     the squash fallback (a fix-loop push to the SAME branch name after an earlier squash-merge).
+#   - squash-confirmed: <branch> <sha>  — a human's one-time confirmation that a squash re-edit
+#     ambiguity for this exact (branch, tip) really is archivable; never re-asked for that tip.
+#   - archive-when-confirmed: <value>   — the human's one-time confirmation of which archive-when
+#     value this estate uses, so the agent asks at most once per estate.
+# Line-based, not real YAML, on purpose: the same "grep it, append to it, never rewrite history"
+# shape as every other serpens-sdd state file. Appends only; nothing here is ever edited in place
+# except a fresh archive-when-confirmed line, deliberately singular (one estate, one answer).
+dc_estate_path() {
+  local root="${1:-.}"
+  printf '%s/.serpens.yaml\n' "$root"
+}
+
+dc_estate_ensure() {
+  local path="$1"
+  [ -f "$path" ] || printf '# serpens-sdd:estate-state\n' > "$path"
+}
+
+# Records a new handoff tip for $branch unless it already IS the latest recorded tip (so a
+# second --handoff on an unchanged HEAD does not grow the file forever).
+dc_record_handoff_tip() {
+  local root="$1" branch="$2" sha="$3" path
+  path="$(dc_estate_path "$root")"
+  dc_estate_ensure "$path"
+  local latest
+  latest="$(dc_latest_handoff_tip "$root" "$branch")"
+  [ "$latest" = "$sha" ] && return 0
+  printf 'handoff-tip: %s %s\n' "$branch" "$sha" >> "$path"
+}
+
+# All recorded tips for $branch, oldest first, one per line.
+dc_handoff_tips() {
+  local root="$1" branch="$2" path
+  path="$(dc_estate_path "$root")"
+  [ -f "$path" ] || return 0
+  grep -F "handoff-tip: $branch " "$path" 2>/dev/null | awk '{print $3}'
+}
+
+dc_latest_handoff_tip() {
+  dc_handoff_tips "$1" "$2" | tail -1
+}
+
+dc_record_squash_confirm() {
+  local root="$1" branch="$2" sha="$3" path
+  path="$(dc_estate_path "$root")"
+  dc_estate_ensure "$path"
+  dc_squash_confirmed "$root" "$branch" "$sha" && return 0
+  printf 'squash-confirmed: %s %s\n' "$branch" "$sha" >> "$path"
+}
+
+dc_squash_confirmed() {
+  local root="$1" branch="$2" sha="$3" path
+  path="$(dc_estate_path "$root")"
+  [ -f "$path" ] || return 1
+  grep -qF "squash-confirmed: $branch $sha" "$path" 2>/dev/null
+}
+
+dc_record_archive_when_confirm() {
+  local root="$1" value="$2" path tmp
+  path="$(dc_estate_path "$root")"
+  dc_estate_ensure "$path"
+  tmp="$(mktemp)"
+  grep -v '^archive-when-confirmed: ' "$path" > "$tmp" 2>/dev/null || true
+  printf 'archive-when-confirmed: %s\n' "$value" >> "$tmp"
+  mv "$tmp" "$path"
+}
+
+dc_archive_when_confirmed() {
+  local root="$1" path
+  path="$(dc_estate_path "$root")"
+  [ -f "$path" ] || return 1
+  grep '^archive-when-confirmed: ' "$path" 2>/dev/null | tail -1 | sed 's/^archive-when-confirmed: //'
+}

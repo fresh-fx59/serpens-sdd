@@ -43,6 +43,7 @@ ALLOW_DIRTY=0
 CHECKOUT=0
 CONVENTIONS=""
 MARK_TICKET=""
+CONFIRM_SQUASH_REEDIT=0
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --repo) REPO=${2:-}; shift 2 ;;
@@ -51,10 +52,15 @@ while [ "$#" -gt 0 ]; do
     --checkout) CHECKOUT=1; shift ;;
     --conventions) CONVENTIONS=${2:-}; shift 2 ;;
     --ticket) MARK_TICKET=${2:-}; shift 2 ;;
+    --confirm-squash-reedit) CONFIRM_SQUASH_REEDIT=1; shift ;;
     -h|--help) usage; exit 0 ;;
     *) echo "✗ unknown argument: $1" >&2; usage; exit 2 ;;
   esac
 done
+if [ "$MODE" != assert-archivable ] && [ "$CONFIRM_SQUASH_REEDIT" -eq 1 ]; then
+  echo "✗ --confirm-squash-reedit is valid only with assert-archivable" >&2
+  exit 2
+fi
 case "$MODE" in inspect|prepare-base|assert-archivable|assert-change|mark-change) ;; *) echo "✗ unknown mode: $MODE" >&2; usage; exit 2 ;; esac
 if [ "$MODE" != assert-change ] && [ "$ALLOW_DIRTY" -eq 1 ]; then
   echo "✗ --allow-dirty is valid only with assert-change" >&2
@@ -276,6 +282,81 @@ if [ "$MODE" = assert-archivable ]; then
   if ! git -C "$REPO" show-ref --verify --quiet "refs/remotes/origin/$BASE"; then
     die_state "origin/$BASE does not exist" "  ↳ inspect branches: git -C \"$REPO\" branch -r"
   fi
+
+  # spec-org-facts-slice-delivery-2026-09-23.md §2b item 3: with `merge-style` configured, the
+  # recorded handoff-tip SHA (delivery --handoff writes it to <repo-root>/.serpens.yaml) is
+  # checked against origin/$BASE by the rule the shop's own merge-style implies — a REAL "did MY
+  # commits land" check, replacing the plain ancestor proxy below (which stays, unchanged, for an
+  # estate that has not set merge-style yet — "in addition to", never a silent fallback between
+  # the two once merge-style IS set).
+  if [ -n "$DC_MERGE_STYLE" ]; then
+    tip=$(dc_latest_handoff_tip "$REPO" "$branch")
+    if [ -z "$tip" ]; then
+      die_state "merge-style=$DC_MERGE_STYLE is set but no handoff tip is recorded for $branch" \
+        "  ↳ run: <serpens-sdd> delivery --handoff   (this records the pushed tip in $(dc_estate_path "$REPO"))"
+    fi
+    if ! git -C "$REPO" cat-file -e "$tip" 2>/dev/null; then
+      die_state "recorded handoff tip $tip for $branch is not a known commit here" \
+        "  ↳ fetch it first: git -C \"$REPO\" fetch origin"
+    fi
+    case "$DC_MERGE_STYLE" in
+      merge)
+        if git -C "$REPO" merge-base --is-ancestor "$tip" "origin/$BASE"; then
+          echo "✓ merge-style=merge: recorded tip ${tip:0:12} is an ancestor of origin/$BASE (archivable)"
+          exit 0
+        fi
+        die_state "merge-style=merge check failed: recorded tip ${tip:0:12} is NOT an ancestor of origin/$BASE" \
+          "  ↳ inspect it: git -C \"$REPO\" log --oneline origin/$BASE..$tip" \
+          "  ↳ the ${DC_FORGE_WORD:-PR} for this tip has not merged into origin/$BASE yet"
+        ;;
+      rebase)
+        cherry_out=$(git -C "$REPO" cherry "origin/$BASE" "$tip" 2>/dev/null || true)
+        unapplied=$(printf '%s\n' "$cherry_out" | grep -c '^+' || true)
+        if [ "$unapplied" -eq 0 ]; then
+          echo "✓ merge-style=rebase: every commit up to tip ${tip:0:12} is already applied on origin/$BASE (\`git cherry\` shows no + lines; archivable)"
+          exit 0
+        fi
+        die_state "merge-style=rebase check failed: $unapplied commit(s) up to tip ${tip:0:12} are NOT applied on origin/$BASE (\`git cherry\` shows + lines)" \
+          "  ↳ inspect it: git -C \"$REPO\" cherry origin/$BASE $tip" \
+          "  ↳ the rebase-merge for this tip has not landed on origin/$BASE yet"
+        ;;
+      squash)
+        mb=$(git -C "$REPO" merge-base "$tip" "origin/$BASE") \
+          || die_state "cannot compute a merge-base of tip ${tip:0:12} and origin/$BASE" \
+            "  ↳ they may share no history — inspect: git -C \"$REPO\" log --oneline -1 $tip; git -C \"$REPO\" log --oneline -1 origin/$BASE"
+        paths_tip=$(git -C "$REPO" diff --name-only "$mb" "$tip" | LC_ALL=C sort)
+        paths_base=$(git -C "$REPO" diff --name-only "$mb" "origin/$BASE" | LC_ALL=C sort)
+        if [ "$paths_tip" != "$paths_base" ]; then
+          die_state "merge-style=squash check failed: changed paths at tip ${tip:0:12} (since diverging at ${mb:0:12}) differ from origin/$BASE's changed paths over the same range" \
+            "  ↳ tip's paths: git -C \"$REPO\" diff --name-only $mb $tip" \
+            "  ↳ base's paths: git -C \"$REPO\" diff --name-only $mb origin/$BASE" \
+            "  ↳ the squash-merge for this tip has not landed on origin/$BASE yet, or a different change landed instead"
+        fi
+        tip_count=$(dc_handoff_tips "$REPO" "$branch" | wc -l | tr -d ' ')
+        if [ "$tip_count" -le 1 ]; then
+          echo "✓ merge-style=squash: changed paths at tip ${tip:0:12} match origin/$BASE's changed paths since diverging (archivable)"
+          exit 0
+        fi
+        # More than one handoff tip recorded for this branch means it was pushed again after an
+        # earlier squash-merge — spec §2b item 3's fallback: the path-set match alone cannot tell
+        # a genuine re-verification apart from a coincidental re-edit of the same files, so a
+        # human confirms once, and that confirmation (keyed on THIS exact tip) is never re-asked.
+        if dc_squash_confirmed "$REPO" "$branch" "$tip"; then
+          echo "✓ merge-style=squash: changed paths match origin/$BASE; the re-edit ambiguity for tip ${tip:0:12} was already confirmed by a human (archivable)"
+          exit 0
+        fi
+        if [ "$CONFIRM_SQUASH_REEDIT" -eq 1 ]; then
+          dc_record_squash_confirm "$REPO" "$branch" "$tip"
+          echo "✓ merge-style=squash: changed paths match origin/$BASE; re-edit ambiguity confirmed by human for tip ${tip:0:12} — recorded, will not be re-asked (archivable)"
+          exit 0
+        fi
+        die_state "merge-style=squash: changed paths at tip ${tip:0:12} match origin/$BASE, but $tip_count handoff tips are recorded for $branch — this branch was pushed again after what looks like an earlier squash-merge, touching the same paths again, which a path-set check alone cannot tell apart from a true match" \
+          "  ↳ a human must confirm this is really archivable: re-run with --confirm-squash-reedit" \
+          "  ↳ inspect the history since diverging: git -C \"$REPO\" log --oneline $mb..$tip"
+        ;;
+    esac
+  fi
+
   if ! git -C "$REPO" merge-base --is-ancestor "origin/$BASE" HEAD; then
     die_state "$branch does not contain origin/$BASE" \
       "  ↳ archiving here would fold the delta into stale specs" \

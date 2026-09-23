@@ -386,6 +386,199 @@ else
 fi
 rm -rf "$NR"
 
+# ---- merge-style-keyed assert-archivable (spec-org-facts-slice-delivery-2026-09-23.md §2b item 3) --
+write_delivery_merge_style() {
+  mkdir -p "$REPO/serpens"
+  cat > "$REPO/serpens/delivery.md" <<EOF
+<!-- serpens:section delivery-contract -->
+| Field | Value |
+|---|---|
+| \`merge-style\` | $1 |
+EOF
+}
+record_tip() {
+  # branch tip — appends a handoff-tip line to <repo>/.serpens.yaml, exactly as delivery.sh
+  # --handoff would (tested independently in test/delivery-contract.test.mjs); done directly here
+  # so this fixture stays a pure Bash/Git test with no Node dependency.
+  printf 'handoff-tip: %s %s\n' "$1" "$2" >> "$REPO/.serpens.yaml"
+}
+
+echo "T26 merge-style=merge: recorded tip an ancestor of origin/develop passes"
+restore_repo
+write_delivery_merge_style merge
+G -C "$REPO" checkout --quiet -B feature/MRG-1 origin/develop
+printf 'work\n' >> "$REPO/state.txt"
+G -C "$REPO" commit --quiet -am 'feat(MRG-1): work'
+tip=$(G -C "$REPO" rev-parse HEAD)
+record_tip feature/MRG-1 "$tip"
+G -C "$REPO" checkout --quiet develop
+G -C "$REPO" merge --quiet --no-ff -m 'merge MRG-1' feature/MRG-1
+G -C "$REPO" push --quiet origin develop
+G -C "$REPO" checkout --quiet feature/MRG-1
+out=$(run_state assert-archivable); rc=$?
+if [ "$rc" -eq 0 ] && grep -q "merge-style=merge" <<<"$out" && grep -q "is an ancestor of origin/develop" <<<"$out"; then
+  ok "merge-style=merge check passed on a genuinely merged tip"
+else
+  no "merge-style=merge check did not pass (rc=$rc)" "$out"
+fi
+G -C "$REPO" push --quiet origin --delete feature/MRG-1 >/dev/null 2>&1 || true
+
+echo "T27 merge-style=merge: recorded tip NOT an ancestor of origin/develop fails naming the reason"
+restore_repo
+write_delivery_merge_style merge
+G -C "$REPO" checkout --quiet -B feature/MRG-2 origin/develop
+printf 'unmerged\n' >> "$REPO/state.txt"
+G -C "$REPO" commit --quiet -am 'feat(MRG-2): unmerged work'
+tip=$(G -C "$REPO" rev-parse HEAD)
+record_tip feature/MRG-2 "$tip"
+out=$(run_state assert-archivable); rc=$?
+if [ "$rc" -eq 1 ] && grep -q "merge-style=merge check failed" <<<"$out" \
+  && grep -q "is NOT an ancestor of origin/develop" <<<"$out"; then
+  ok "merge-style=merge check named the specific reason for an un-merged tip"
+else
+  no "merge-style=merge check did not fail with the specific reason (rc=$rc)" "$out"
+fi
+
+echo "T28 merge-style=rebase: git cherry shows every commit already applied passes"
+restore_repo
+write_delivery_merge_style rebase
+G -C "$REPO" checkout --quiet -B feature/RBS-1 origin/develop
+printf 'rebase-work\n' >> "$REPO/state.txt"
+G -C "$REPO" commit --quiet -am 'feat(RBS-1): work'
+tip=$(G -C "$REPO" rev-parse HEAD)
+record_tip feature/RBS-1 "$tip"
+G -C "$REPO" checkout --quiet develop
+G -C "$REPO" cherry-pick --quiet feature/RBS-1
+G -C "$REPO" push --quiet origin develop
+G -C "$REPO" checkout --quiet feature/RBS-1
+out=$(run_state assert-archivable); rc=$?
+if [ "$rc" -eq 0 ] && grep -q "merge-style=rebase" <<<"$out" && grep -q "already applied" <<<"$out"; then
+  ok "merge-style=rebase check passed when git cherry shows no + lines"
+else
+  no "merge-style=rebase check did not pass (rc=$rc)" "$out"
+fi
+
+echo "T29 merge-style=rebase: an un-applied commit fails naming the reason"
+restore_repo
+write_delivery_merge_style rebase
+G -C "$REPO" checkout --quiet -B feature/RBS-2 origin/develop
+printf 'rebase-unapplied\n' >> "$REPO/state.txt"
+G -C "$REPO" commit --quiet -am 'feat(RBS-2): unapplied work'
+tip=$(G -C "$REPO" rev-parse HEAD)
+record_tip feature/RBS-2 "$tip"
+out=$(run_state assert-archivable); rc=$?
+if [ "$rc" -eq 1 ] && grep -q "merge-style=rebase check failed" <<<"$out" \
+  && grep -q "are NOT applied on origin/develop" <<<"$out"; then
+  ok "merge-style=rebase check named the un-applied-commit reason"
+else
+  no "merge-style=rebase check did not fail with the specific reason (rc=$rc)" "$out"
+fi
+
+echo "T30 merge-style=squash: changed paths at the tip equal origin/develop's diff since diverging, passes"
+restore_repo
+write_delivery_merge_style squash
+G -C "$REPO" checkout --quiet -B feature/SQH-1 origin/develop
+printf 'squash-work\n' > "$REPO/squash-file.txt"
+G -C "$REPO" add squash-file.txt
+G -C "$REPO" commit --quiet -m 'feat(SQH-1): work'
+tip=$(G -C "$REPO" rev-parse HEAD)
+record_tip feature/SQH-1 "$tip"
+G -C "$REPO" checkout --quiet develop
+G -C "$REPO" merge --quiet --squash feature/SQH-1
+G -C "$REPO" commit --quiet -m 'feat(SQH-1): work (squashed)'
+G -C "$REPO" push --quiet origin develop
+G -C "$REPO" checkout --quiet feature/SQH-1
+out=$(run_state assert-archivable); rc=$?
+if [ "$rc" -eq 0 ] && grep -q "merge-style=squash" <<<"$out" && grep -q "changed paths" <<<"$out"; then
+  ok "merge-style=squash check passed when changed paths match"
+else
+  no "merge-style=squash check did not pass (rc=$rc)" "$out"
+fi
+
+echo "T31 merge-style=squash: a path mismatch fails naming the reason"
+restore_repo
+write_delivery_merge_style squash
+G -C "$REPO" checkout --quiet -B feature/SQH-2 origin/develop
+printf 'squash-work-2\n' > "$REPO/squash-file-2.txt"
+G -C "$REPO" add squash-file-2.txt
+G -C "$REPO" commit --quiet -m 'feat(SQH-2): work'
+tip=$(G -C "$REPO" rev-parse HEAD)
+record_tip feature/SQH-2 "$tip"
+# origin/develop moves ahead with an UNRELATED change instead of this one's squash-merge.
+G -C "$REPO" checkout --quiet develop
+printf 'unrelated\n' > "$REPO/unrelated-file.txt"
+G -C "$REPO" add unrelated-file.txt
+G -C "$REPO" commit --quiet -m 'chore: unrelated'
+G -C "$REPO" push --quiet origin develop
+G -C "$REPO" checkout --quiet feature/SQH-2
+out=$(run_state assert-archivable); rc=$?
+if [ "$rc" -eq 1 ] && grep -q "merge-style=squash check failed" <<<"$out" \
+  && grep -q "differ from origin/develop" <<<"$out"; then
+  ok "merge-style=squash check named the path-mismatch reason"
+else
+  no "merge-style=squash check did not fail with the specific reason (rc=$rc)" "$out"
+fi
+
+echo "T32 squash re-edit fallback: a second push touching the same paths asks for one human confirmation, then remembers it"
+restore_repo
+write_delivery_merge_style squash
+G -C "$REPO" checkout --quiet -B feature/SQH-3 origin/develop
+printf 'first\n' > "$REPO/squash-file-3.txt"
+G -C "$REPO" add squash-file-3.txt
+G -C "$REPO" commit --quiet -m 'feat(SQH-3): first pass'
+tip1=$(G -C "$REPO" rev-parse HEAD)
+record_tip feature/SQH-3 "$tip1"
+G -C "$REPO" checkout --quiet develop
+G -C "$REPO" merge --quiet --squash feature/SQH-3
+G -C "$REPO" commit --quiet -m 'feat(SQH-3): first pass (squashed)'
+G -C "$REPO" push --quiet origin develop
+# Fix loop (spec §2b item 1): same branch name, re-cut from the now-updated base, pushed again,
+# editing the SAME path — a second handoff tip for the same branch name.
+G -C "$REPO" branch -D feature/SQH-3 >/dev/null
+G -C "$REPO" checkout --quiet -B feature/SQH-3 origin/develop
+printf 'second\n' >> "$REPO/squash-file-3.txt"
+G -C "$REPO" commit --quiet -am 'feat(SQH-3): second pass, same file'
+tip2=$(G -C "$REPO" rev-parse HEAD)
+record_tip feature/SQH-3 "$tip2"
+G -C "$REPO" checkout --quiet develop
+G -C "$REPO" merge --quiet --squash feature/SQH-3
+G -C "$REPO" commit --quiet -m 'feat(SQH-3): second pass (squashed)'
+G -C "$REPO" push --quiet origin develop
+G -C "$REPO" checkout --quiet feature/SQH-3
+out=$(run_state assert-archivable); rc=$?
+if [ "$rc" -eq 1 ] && grep -q "touching the same paths again" <<<"$out" && grep -q -- "--confirm-squash-reedit" <<<"$out"; then
+  ok "ambiguous re-edit was refused without confirmation, naming the flag"
+else
+  no "ambiguous re-edit was not refused as expected (rc=$rc)" "$out"
+fi
+out2=$(run_state assert-archivable --confirm-squash-reedit); rc2=$?
+if [ "$rc2" -eq 0 ] && grep -q "confirmed by human" <<<"$out2"; then
+  ok "explicit confirmation passed the check and recorded it"
+else
+  no "confirmed re-run did not pass (rc=$rc2)" "$out2"
+fi
+out3=$(run_state assert-archivable); rc3=$?
+if [ "$rc3" -eq 0 ] && grep -q "already confirmed by a human" <<<"$out3"; then
+  ok "a second run did not re-ask — the recorded confirmation was reused"
+else
+  no "second run re-asked instead of reusing the recorded confirmation (rc=$rc3)" "$out3"
+fi
+
+echo "T33 merge-style set but no handoff tip recorded fails naming the fix"
+restore_repo
+write_delivery_merge_style merge
+G -C "$REPO" checkout --quiet -B feature/MRG-3 origin/develop
+printf 'no-tip\n' >> "$REPO/state.txt"
+G -C "$REPO" commit --quiet -am 'feat(MRG-3): no recorded tip'
+out=$(run_state assert-archivable); rc=$?
+if [ "$rc" -eq 1 ] && grep -q "no handoff tip is recorded for feature/MRG-3" <<<"$out" \
+  && grep -q "delivery --handoff" <<<"$out"; then
+  ok "missing handoff tip refused, naming the fix"
+else
+  no "missing handoff tip was not refused as expected (rc=$rc)" "$out"
+fi
+restore_repo
+
 echo "T22 mark-change writes the marker"
 MC=$(mktemp -d)
 G init -q "$MC/repo"; G -C "$MC/repo" config user.email t@t.t; G -C "$MC/repo" config user.name t

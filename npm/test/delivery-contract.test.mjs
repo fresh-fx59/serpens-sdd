@@ -24,6 +24,22 @@ function writeDelivery(repoRoot, body) {
   writeFileSync(join(dir, 'delivery.md'), body, 'utf8');
 }
 
+// §2b item 3 fix: the handoff record is keyed by change-id (+ticket), never by branch — a
+// marked change (the same `openspec/changes/<id>/.serpens.yaml` marker `state mark-change`
+// writes) must exist before `delivery --handoff` can resolve one from the branch's ticket.
+function markChange(repoRoot, changeId, ticket, branch) {
+  const dir = join(repoRoot, 'openspec', 'changes', changeId);
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(join(dir, '.serpens.yaml'), [
+    '# serpens-sdd:change-marker',
+    'owner: serpens-sdd',
+    `ticket: ${ticket}`,
+    `branch: ${branch}`,
+    'created: 2026-09-24',
+    '',
+  ].join('\n'), 'utf8');
+}
+
 const FULL_CONTRACT = [
   '<!-- serpens:section delivery-contract -->',
   '| Field | Value |',
@@ -220,6 +236,7 @@ test('--handoff on a pushed branch prints branch, base and title with pr-opened-
   execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
   execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
   execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/SVC-142']);
+  markChange(repo, 'add-field', 'SVC-142', 'feature/SVC-142');
   writeFileSync(join(repo, 'x.txt'), 'x\n', 'utf8');
   execFileSync('git', ['-C', repo, 'add', 'x.txt']);
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(SVC-142): add field']);
@@ -231,6 +248,15 @@ test('--handoff on a pushed branch prints branch, base and title with pr-opened-
   assert.match(result.stdout, /^Pushed branch: feature\/SVC-142$/m);
   assert.match(result.stdout, /^Target branch: develop$/m);
   assert.match(result.stdout, /^Suggested title: feat\(SVC-142\): add field$/m);
+
+  // The record is committed and pushed as its own commit — the tree stays clean, unlike the old
+  // behaviour that left `.serpens.yaml` a dirty tracked file (spec §2b item 3, second defect).
+  const dirty = execFileSync('git', ['-C', repo, 'status', '--porcelain', '--untracked-files=no'], { encoding: 'utf8' }).trim();
+  assert.equal(dirty, '', 'the tree must be clean after --handoff');
+  const log = execFileSync('git', ['-C', repo, 'log', '-1', '--pretty=%s'], { encoding: 'utf8' }).trim();
+  assert.match(log, /^chore\(SVC-142\): record handoff [0-9a-f]{7}$/);
+  const originLog = execFileSync('git', ['-C', origin, 'log', 'develop..feature/SVC-142', '--oneline'], { encoding: 'utf8' });
+  assert.match(originLog, /record handoff/, 'the record commit must be pushed to origin');
 });
 
 test('--handoff on an unpushed branch fails naming the fix', async () => {
@@ -276,6 +302,7 @@ test('--handoff with pr-opened-by=agent prints the agent-may-open wording', asyn
   execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
   execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
   execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/SVC-2']);
+  markChange(repo, 'agent-work', 'SVC-2', 'feature/SVC-2');
   writeFileSync(join(repo, 'y.txt'), 'y\n', 'utf8');
   execFileSync('git', ['-C', repo, 'add', 'y.txt']);
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(SVC-2): work']);
@@ -364,6 +391,7 @@ test('--handoff records the pushed HEAD as a handoff-tip in <repo-root>/.serpens
   execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
   execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
   execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/SVC-9']);
+  markChange(repo, 'nine', 'SVC-9', 'feature/SVC-9');
   writeFileSync(join(repo, 'x.txt'), 'x\n', 'utf8');
   execFileSync('git', ['-C', repo, 'add', 'x.txt']);
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(SVC-9): one']);
@@ -373,9 +401,11 @@ test('--handoff records the pushed HEAD as a handoff-tip in <repo-root>/.serpens
   let result = await delivery(['--handoff'], repo);
   assert.equal(result.code, 0, result.stderr);
   let estate = readFileSync(join(repo, '.serpens.yaml'), 'utf8');
-  assert.match(estate, new RegExp(`handoff-tip: feature/SVC-9 ${tip1}`));
+  assert.match(estate, new RegExp(`handoff-tip: nine SVC-9 ${tip1}`));
+  // The tree is clean: the record was committed and pushed, not left dirty.
+  assert.equal(execFileSync('git', ['-C', repo, 'status', '--porcelain', '--untracked-files=no'], { encoding: 'utf8' }).trim(), '');
 
-  // A second commit + push: the latest tip is recorded too, the first one is kept (not overwritten).
+  // A second commit + push (fix loop): the latest tip is recorded too, the first one is kept.
   writeFileSync(join(repo, 'y.txt'), 'y\n', 'utf8');
   execFileSync('git', ['-C', repo, 'add', 'y.txt']);
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(SVC-9): two']);
@@ -385,14 +415,18 @@ test('--handoff records the pushed HEAD as a handoff-tip in <repo-root>/.serpens
   result = await delivery(['--handoff'], repo);
   assert.equal(result.code, 0, result.stderr);
   estate = readFileSync(join(repo, '.serpens.yaml'), 'utf8');
-  assert.match(estate, new RegExp(`handoff-tip: feature/SVC-9 ${tip1}`));
-  assert.match(estate, new RegExp(`handoff-tip: feature/SVC-9 ${tip2}`));
+  assert.match(estate, new RegExp(`handoff-tip: nine SVC-9 ${tip1}`));
+  assert.match(estate, new RegExp(`handoff-tip: nine SVC-9 ${tip2}`));
 
-  // Re-running --handoff with HEAD unchanged does not grow the file with a duplicate line.
+  // Re-running --handoff with HEAD unchanged does not grow the file with a duplicate line, and
+  // makes no new commit (nothing to record).
+  const headBefore = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
   result = await delivery(['--handoff'], repo);
   assert.equal(result.code, 0, result.stderr);
+  const headAfter = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  assert.equal(headAfter, headBefore, 'an unchanged HEAD must not add a new record commit');
   const finalEstate = readFileSync(join(repo, '.serpens.yaml'), 'utf8');
-  const occurrences = finalEstate.split(`handoff-tip: feature/SVC-9 ${tip2}`).length - 1;
+  const occurrences = finalEstate.split(`handoff-tip: nine SVC-9 ${tip2}`).length - 1;
   assert.equal(occurrences, 1, 'an unchanged HEAD must not add a duplicate handoff-tip line');
 });
 
@@ -431,6 +465,7 @@ test('handoff-to=chat+ticket with a stub tracker posts the exact hand-off text a
   execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
   execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
   execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/SVC-10']);
+  markChange(repo, 'ten', 'SVC-10', 'feature/SVC-10');
   writeFileSync(join(repo, 'w.txt'), 'w\n', 'utf8');
   execFileSync('git', ['-C', repo, 'add', 'w.txt']);
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(SVC-10): work']);
@@ -462,6 +497,7 @@ test('handoff-to=chat+ticket with NO tracker configured errors naming the gap, n
   execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
   execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
   execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/SVC-11']);
+  markChange(repo, 'eleven', 'SVC-11', 'feature/SVC-11');
   writeFileSync(join(repo, 'w.txt'), 'w\n', 'utf8');
   execFileSync('git', ['-C', repo, 'add', 'w.txt']);
   execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(SVC-11): work']);
@@ -470,4 +506,80 @@ test('handoff-to=chat+ticket with NO tracker configured errors naming the gap, n
   const result = await delivery(['--handoff'], repo);
   assert.equal(result.code, 1);
   assert.match(result.stderr, /requires a configured tracker; none found/);
+});
+
+// ---- forgery detection for merge/rebase handoff records (operator decision 2026-09-24, eval
+// part7-b) — a real `delivery --handoff` commit is verifiable; a hand-edited one is rejected ----
+
+test('assert-archivable --change: a genuine delivery --handoff record (with its Serpens-Handoff-Tip trailer) passes merge-style=merge', async () => {
+  const origin = mkdtempSync(join(tmpdir(), 'serpens-sdd-delivery-origin-'));
+  execFileSync('git', ['init', '--quiet', '--bare', '-b', 'develop'], { cwd: origin });
+  const repo = makeRepo();
+  writeDelivery(repo, [
+    '<!-- serpens:section delivery-contract -->',
+    '| `merge-style` | merge |',
+    '',
+  ].join('\n'));
+  execFileSync('git', ['-C', repo, 'add', 'serpens/delivery.md']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'chore: delivery contract']);
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/FRG-1']);
+  markChange(repo, 'frg-1', 'FRG-1', 'feature/FRG-1');
+  writeFileSync(join(repo, 'x.txt'), 'x\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'x.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(FRG-1): work']);
+  execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/FRG-1']);
+
+  // Real handoff: commits + pushes the trailered record.
+  let result = await delivery(['--handoff', '--change', 'frg-1'], repo);
+  assert.equal(result.code, 0, result.stderr);
+
+  // Merge it for real (as a human merging the PR would) and push develop.
+  execFileSync('git', ['-C', repo, 'checkout', '-q', 'develop']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'merge', '-q', '--no-ff', '-m', 'merge FRG-1', 'feature/FRG-1']);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'develop']);
+
+  const { cmd, args } = resolveTool('state', ['assert-archivable', '--change', 'frg-1', '--repo', repo]);
+  const stateResult = await run(cmd, args, { cwd: repo });
+  assert.equal(stateResult.code, 0, stateResult.stderr);
+  assert.match(stateResult.stdout, /merge-style=merge/);
+});
+
+test('assert-archivable --change: a hand-edited handoff-tip line (no Serpens-Handoff-Tip trailer) is rejected, never silently trusted', async () => {
+  const origin = mkdtempSync(join(tmpdir(), 'serpens-sdd-delivery-origin-'));
+  execFileSync('git', ['init', '--quiet', '--bare', '-b', 'develop'], { cwd: origin });
+  const repo = makeRepo();
+  writeDelivery(repo, [
+    '<!-- serpens:section delivery-contract -->',
+    '| `merge-style` | merge |',
+    '',
+  ].join('\n'));
+  execFileSync('git', ['-C', repo, 'add', 'serpens/delivery.md']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'chore: delivery contract']);
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/FRG-2']);
+  markChange(repo, 'frg-2', 'FRG-2', 'feature/FRG-2');
+  writeFileSync(join(repo, 'x.txt'), 'x\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'x.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(FRG-2): work']);
+  const tip = execFileSync('git', ['-C', repo, 'rev-parse', 'HEAD'], { encoding: 'utf8' }).trim();
+  execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/FRG-2']);
+
+  // Forge the record by hand — the exact behavior the operator flagged as a real product risk:
+  // a model that sees a correct refusal fabricates the record instead of doing the real work.
+  writeFileSync(join(repo, '.serpens.yaml'), `handoff-tip: frg-2 FRG-2 ${tip}\n`, 'utf8');
+  execFileSync('git', ['-C', repo, 'add', '.serpens.yaml']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'chore(FRG-2): record handoff ' + tip.slice(0, 7)]);
+
+  execFileSync('git', ['-C', repo, 'checkout', '-q', 'develop']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'merge', '-q', '--no-ff', '-m', 'merge FRG-2', 'feature/FRG-2']);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'develop']);
+
+  const { cmd, args } = resolveTool('state', ['assert-archivable', '--change', 'frg-2', '--repo', repo]);
+  const stateResult = await run(cmd, args, { cwd: repo });
+  assert.equal(stateResult.code, 1, stateResult.stdout);
+  assert.match(stateResult.stderr, /no matching `delivery --handoff`-produced record commit/);
+  assert.match(stateResult.stderr, /never hand-edit \.serpens\.yaml/);
 });

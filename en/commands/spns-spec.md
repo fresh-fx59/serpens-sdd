@@ -124,9 +124,9 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    (`git add openspec/changes/<change-id>`), never `git add -A` — the repository holds local-only
    settings and credential files that are not yours to commit, and a file you created is untracked
    until you add it. Commit `docs(<TICKET>): <text>`, push. Then, per `<serpens-sdd> delivery
-   --print-contract`: if `pr-opened-by=human`, run `<serpens-sdd> delivery --handoff` and paste
-   its output to the human verbatim — do NOT create the change request. If `agent`, open (or
-   update) it. Post the spec summary + the handoff (or the change-request link) back to the
+   --print-contract`: if `pr-opened-by=human`, run `<serpens-sdd> delivery --handoff --change
+   <change-id>` and paste its output to the human verbatim — do NOT create the change request. If
+   `agent`, open (or update) it. Post the spec summary + the handoff (or the change-request link) back to the
    story. Done.
 
 4. CROSS-REPO — TICKETS FIRST, driven by what already exists.
@@ -178,8 +178,9 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    `--requirements-only`, `--no-scenarios` and the deprecated `change show` all fail the same way. Run `<serpens-sdd> verify-docs` and
    `<openspec> validate <contract-change-id> --type change --strict --json`; fix until both are
    green and `"valid": true`. Then commit, push. Per `<serpens-sdd> delivery --print-contract`:
-   if `pr-opened-by=human`, run `<serpens-sdd> delivery --handoff` and paste its output to the
-   human verbatim — do NOT create the store change request. If `agent`, open it. Post its link
+   if `pr-opened-by=human`, run `<serpens-sdd> delivery --handoff --change <contract-change-id>`
+   and paste its output to the human verbatim — do NOT create the store change request. If
+   `agent`, open it. Post its link
    (or the handoff) on the parent story.
 
 6. PER REPO, one at a time. Each child ticket owns exactly one repository, and its artifacts live
@@ -253,9 +254,9 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
       `<openspec> validate <change-id> --type change --strict --json`; fix until `"valid": true`.
    d. Stage the change folder by path, commit as `docs(<child-ticket>): <text>`, push. Then, per
       `<serpens-sdd> delivery --print-contract`: if `pr-opened-by=human`, run `<serpens-sdd>
-      delivery --handoff` and paste its output to the human verbatim — do NOT create the change
-      request; post that handoff to the ticket. If `agent`, open it and post the link to the
-      ticket. Never `git add -A`; never leave the step uncommitted.
+      delivery --handoff --change <change-id>` and paste its output to the human verbatim — do
+      NOT create the change request; post that handoff to the ticket. If `agent`, open it and post
+      the link to the ticket. Never `git add -A`; never leave the step uncommitted.
 
 7. GATES. On every implementation child record: approval order (contract first — a fixed kit
    rule), implementation order (producer first), merge order (this estate's `merge-order` from

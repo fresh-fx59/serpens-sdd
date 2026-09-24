@@ -15,18 +15,29 @@ invocation setup resolved.
    for this estate. `archive-when` gates WHEN you run this command at all, not what it checks
    below.
    Precondition, every mode: a human has opened and merged the change request (`forge-word`,
-   from the same contract). Verify it with `<serpens-sdd> state assert-archivable` — never by
-   reading the forge UI, the tracker, or a change-request link; "merged" is judged ONLY by this
-   command's exit code. Run it ONCE, right here, on the branch you are on now — BEFORE you create
-   or switch to any other branch. With `merge-style` configured it proves the recorded hand-off tip
-   reached `origin/<integration-branch>` (merge/rebase/squash-keyed); otherwise it proves the tree
-   is clean, there are no stashes, and HEAD already contains the configured base. Do not assume the
+   from the same contract). Verify it with `<serpens-sdd> state assert-archivable --change
+   <change-id>` — never by reading the forge UI, the tracker, or a change-request link; "merged"
+   is judged ONLY by this command's exit code. Always pass `--change <change-id>` (the same
+   `<change-id>` from `{{args}}`): the hand-off tip this checks is recorded per CHANGE, never per
+   branch — the story branch that had the hand-off is usually deleted by the time you archive,
+   and you may be standing on any branch right now (often the integration branch itself). Run it
+   ONCE, right here, on whatever branch you are on now — BEFORE you create or switch to any other
+   branch. With `merge-style` configured it proves the recorded hand-off tip reached
+   `origin/<integration-branch>` (merge/rebase/squash-keyed); otherwise it proves the tree is
+   clean, there are no stashes, and HEAD already contains the configured base. Do not assume the
    base is named `main`, `master` or `develop`; the tool resolves it.
    - `pr-opened-by=human` (default): non-zero exit = not merged. STOP and tell the human exactly
-     which branch still needs merging — paste `<serpens-sdd> delivery --handoff`'s output
-     verbatim. Do NOT open or merge it yourself.
+     which branch still needs merging — paste `<serpens-sdd> delivery --handoff --change
+     <change-id>`'s output verbatim. Do NOT open or merge it yourself.
    - `pr-opened-by=agent`: non-zero exit = not merged. Ask the user ONCE — continue or stop — and
      follow the answer. Never stop silently.
+   A refusal here is ALWAYS a correct refusal — the change genuinely is not (yet) verifiably
+   merged, or a real `Serpens-Handoff-Tip` record is missing or does not check out. NEVER write or
+   edit `.serpens.yaml` by hand to make this pass, never fabricate a `handoff-tip:` line, and
+   never hand-craft a `chore(<TICKET>): record handoff <sha>` commit yourself — that record is
+   `delivery --handoff`'s output alone, stamped with a trailer only the tool can produce, and a
+   hand-written one is now detected and rejected. If the refusal seems wrong, STOP and say so to
+   the human with the tool's exact message; do not route around it.
    Then place yourself for the close-out commit. With no flag, ask the user ONCE which of the
    three, print the current branch in the question, and wait for the answer — never pick for
    them:
@@ -45,10 +56,10 @@ invocation setup resolved.
    - (3) here: stay on the current branch and do NOT run `prepare-base`.
    A flag answers the question in advance and skips it: `--branch <name>` is (2), `--here` is (3).
    Do NOT run `state assert-archivable` again after this point. The proof above stands for the
-   rest of this command: `prepare-base` already proved the new branch starts clean from the base.
-   Re-running it is red BY DESIGN — on the branch you just cut there is no recorded tip, and after
-   step 5's hand-off it checks your close-out's own tip, which no one has merged yet. Never run
-   `delivery --handoff`, commit, or push just to turn it green.
+   rest of this command, because it is keyed by `<change-id>`, not by branch — re-running it here
+   would check the SAME already-proven change again, which is redundant at best; never run
+   `delivery --handoff --change <change-id>` again for THIS change just to "re-arm" it, and never
+   commit or push just to turn a check green.
    If the change's status shows every artifact `done` OR `skipped` and every task complete, skip
    the per-artifact and per-task confirmations — `skipped` (for example `specs`, under a change
    whose `.openspec.yaml` sets `skip_specs: true`) counts as satisfied there too, and creating a
@@ -84,9 +95,10 @@ invocation setup resolved.
    `--here` mode: the commit rides the branch's existing change request. Default and `--branch`
    mode: push, then, if `pr-opened-by=human`: run `<serpens-sdd> delivery --handoff` and paste
    its output to the human verbatim; do NOT create the change request. `delivery --handoff`
-   appends a `handoff-tip:` line to `.serpens.yaml` — that is the tool's own record of your push,
-   so leave it as it is: do not commit it, do not push again, and do not re-run any check for it. If `pr-opened-by=agent`:
-   open it. The store catalog picks this up on its next aggregation — no manual store edits,
-   ever.
+   records this push's tip and commits + pushes that record ITSELF, as its own
+   `chore(<TICKET>): record handoff <sha>` commit — never leave the tree dirty by editing
+   `.serpens.yaml` yourself, and never re-run any check to make that commit "count". If
+   `pr-opened-by=agent`: open it. The store catalog picks this up on its next aggregation — no
+   manual store edits, ever.
 6. Post a one-line completion note through the configured tracker integration. If none exists,
    print the exact note for a human to paste.

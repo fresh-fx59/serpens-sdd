@@ -535,6 +535,25 @@ EOF
     git -C "$REPO" add -A
     git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
       commit --quiet --no-verify -m "docs(SVC-142): story branch placeholder commit — fixture"
+    # The tip a real `delivery --handoff` would have recorded is the STORY branch's own commit —
+    # captured here, BEFORE the merge — never the merge commit itself.
+    STORY_TIP_SHA="$(git -C "$REPO" rev-parse HEAD)"
+
+    # The hand-off RECORD ITSELF is a real commit here too, made on the story branch (exactly
+    # where `delivery --handoff` makes it — spec §2b item 3, fix 2), so it rides along with the
+    # merge below and lands in `origin/develop`'s own history. This is what lets `state
+    # assert-archivable`'s forgery check (operator decision 2026-09-24, eval part7-b) find a
+    # matching \`Serpens-Handoff-Tip:\` trailer — a fixture-installed record that skipped this
+    # step would (correctly) now be rejected as indistinguishable from a hand-edited one.
+    cat > "$REPO/.serpens.yaml" <<SERPENSYAML
+# serpens-sdd:estate-state
+handoff-tip: SVC-142 SVC-142 $STORY_TIP_SHA
+SERPENSYAML
+    git -C "$REPO" add .serpens.yaml
+    git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
+      commit --quiet --no-verify \
+      -m "chore(SVC-142): record handoff ${STORY_TIP_SHA:0:7}" \
+      -m "Serpens-Handoff-Tip: $STORY_TIP_SHA"
     git -C "$REPO" checkout --quiet develop
     git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
       merge --quiet --no-ff -m "Merge pull request #1 from $STORY_BRANCH (SVC-142) — fixture" "$STORY_BRANCH"
@@ -542,13 +561,34 @@ EOF
     MERGE_SHA="$(git -C "$REPO" rev-parse HEAD)"
     git -C "$REPO" branch -q -D "$STORY_BRANCH"
 
+    # §2b item 3, fix (2026-09-24, slice B part 7): the change folder + its Serpens marker must
+    # ALREADY exist here, exactly as a real spec/implement pass would have left them BEFORE the
+    # PR ever merged — archiving is folding an EXISTING, already-marked change, never inventing
+    # one from scratch. Skipping this (the original defect) forced the model to run
+    # `<openspec> new change SVC-142` itself mid-archive, which is semantically backwards and
+    # measurably confused it into fabricating a handoff record by hand instead of doing the real
+    # archive work (eval 2026-09-24, part7-b samples 1/2 — traced to exactly this gap).
+    mkdir -p "$REPO/openspec/changes/SVC-142"
+    cat > "$REPO/openspec/changes/SVC-142/proposal.md" <<'PROPOSAL'
+# Proposal (fixture stub, already-merged)
+
+## Why
+The account dashboard team needs a preferred-display-language field on /profile.
+
+## What Changes
+- Add `preferred_display_language` to the user profile.
+PROPOSAL
+    if [ -n "$PKG_DIR" ]; then
+      node "$PKG_DIR/bin/serpens-sdd.mjs" state mark-change SVC-142 --ticket SVC-142 --repo "$REPO" >/dev/null
+    fi
+
     # delivery slice (spec-org-facts-slice-delivery-2026-09-23.md §4/§9(b)): install the estate's
     # delivery-contract with merge-style=merge so `state assert-archivable`'s merge-style-keyed
     # check (§2b item 3) actually runs, instead of the plain ancestor proxy. The story branch is
-    # gone (a real merge deletes it), so by the time the agent runs assert-archivable it is
-    # standing on `develop` — the recorded handoff tip is therefore keyed to `develop`, matching
-    # `git symbolic-ref HEAD` at check time, exactly as a human's real `delivery --handoff` run
-    # (from develop, right after pulling the merge) would have left it.
+    # gone (a real merge deletes it), so by the time the agent runs assert-archivable it may be
+    # standing on ANY branch (often `develop`) — the recorded handoff tip is therefore keyed to
+    # the CHANGE-ID (`SVC-142`, matching the marker above), never to a branch name (§2b item 3,
+    # fix 1 — this fixture used to key it to `develop`, masking the very bug that fix exists for).
     mkdir -p "$REPO/serpens"
     cat > "$REPO/serpens/delivery.md" <<DELIVERY
 <!-- serpens:section delivery-contract -->
@@ -569,18 +609,15 @@ EOF
 | \`handoff-to\`          | chat |
 DELIVERY
 
-    # .serpens.yaml — as \`<serpens-sdd> delivery --handoff\` would have left it (fixture-recorded,
-    # not model-produced): one handoff-tip line for \`develop\`, at the merge commit that IS the
-    # tip pushed to origin/develop above (spec §2b item 3, tools/lib/delivery-contract.sh
-    # dc_record_handoff_tip's own line shape: "handoff-tip: <branch> <sha>").
-    cat > "$REPO/.serpens.yaml" <<SERPENSYAML
-# serpens-sdd:estate-state
-handoff-tip: develop $MERGE_SHA
-archive-when-confirmed: after-qa-accepted
-SERPENSYAML
+    # .serpens.yaml already carries the real handoff-tip record commit (made on the story branch,
+    # above, before the merge — the ONLY correct place for a real \`delivery --handoff\` record).
+    # This step only APPENDS the archive-when confirmation — never re-writes the handoff-tip line,
+    # which must stay exactly the commit that carries its verifiable \`Serpens-Handoff-Tip:\`
+    # trailer.
+    printf 'archive-when-confirmed: after-qa-accepted\n' >> "$REPO/.serpens.yaml"
     git -C "$REPO" add -A
     git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
-      commit --quiet --no-verify -m "chore: install delivery contract + recorded handoff tip — fixture"
+      commit --quiet --no-verify -m "chore: install delivery contract + archive-when confirmation — fixture"
     git -C "$REPO" push --quiet origin develop
     echo "== fixture variant archive-ready: PR simulated merged into origin/develop; delivery contract + .serpens.yaml installed; origin at $ORIGIN_BARE =="
     ;;

@@ -25,7 +25,7 @@ usage() {
   cat >&2 <<'EOF'
 usage:
   delivery.sh --print-contract [--conventions <path>] [--repo <path>]
-  delivery.sh --handoff [--base <branch>] [--conventions <path>] [--repo <path>]
+  delivery.sh --handoff [--change <change-id>] [--base <branch>] [--conventions <path>] [--repo <path>]
   delivery.sh --confirm-archive-when <after-merge|after-qa-accepted> [--repo <path>]
 EOF
 }
@@ -35,6 +35,7 @@ REPO="."
 CONVENTIONS=""
 BASE_OVERRIDE=""
 ARCHIVE_WHEN_CONFIRM=""
+CHANGE_ARG=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --print-contract) MODE="print-contract"; shift ;;
@@ -43,11 +44,16 @@ while [ "$#" -gt 0 ]; do
     --conventions) CONVENTIONS=${2:-}; shift 2 ;;
     --repo) REPO=${2:-}; shift 2 ;;
     --base) BASE_OVERRIDE=${2:-}; shift 2 ;;
+    --change) CHANGE_ARG=${2:-}; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "✗ unknown argument: $1" >&2; usage; exit 2 ;;
   esac
 done
 [ -n "$MODE" ] || { usage; exit 2; }
+if [ "$MODE" != handoff ] && [ -n "$CHANGE_ARG" ]; then
+  echo "✗ --change is valid only with --handoff" >&2
+  exit 2
+fi
 
 repo_top=$(git -C "$REPO" rev-parse --show-toplevel 2>/dev/null || true)
 [ -n "$repo_top" ] || die "not a Git repository: $REPO"
@@ -152,12 +158,75 @@ echo "$handoff_line2"
 echo "$handoff_line3"
 echo "$handoff_line4"
 
-# Records this HEAD as the branch's latest handoff tip (spec §2b item 3): `state
-# assert-archivable`'s merge-style-keyed check reads it back. Recorded unconditionally (every
-# mode) — the fix loop pushes to the SAME branch name again after an earlier squash/merge, and
-# the LATEST tip is what the merged check must compare, with earlier ones kept for the squash
-# fallback.
-dc_record_handoff_tip "$REPO" "$branch" "$(git -C "$REPO" rev-parse HEAD)"
+# Resolve WHICH marked change this hand-off belongs to: the record below is keyed by change-id
+# (+ticket), never by branch — a story branch is usually deleted after merge, and archive runs on
+# a fresh close-out branch that never had its own hand-off (spec §2b item 3).
+bc_load "" "$REPO"
+hoff_change_id="$CHANGE_ARG"
+hoff_ticket=""
+if [ -n "$hoff_change_id" ]; then
+  hoff_ticket="$(dc_ticket_for_change "$REPO" "$hoff_change_id")" \
+    || die "no marked change $hoff_change_id" \
+      "  ↳ inspect it: cat \"$REPO/openspec/changes/$hoff_change_id/.serpens.yaml\"" \
+      "  ↳ run: <serpens-sdd> state mark-change $hoff_change_id --ticket <TICKET> first"
+else
+  if [[ "$branch" =~ $BC_BRANCH_REGEX_CAP ]]; then
+    hoff_ticket="${BASH_REMATCH[1]}"
+  fi
+  [ -n "$hoff_ticket" ] || die "cannot derive a ticket from branch $branch" \
+    "  ↳ pass --change <change-id> explicitly"
+  # A marked change (openspec/changes/<id>/.serpens.yaml) is the precise key while it exists —
+  # but `<openspec> archive` FOLDS that directory away (spns-archive step 1), and step 5's own
+  # close-out hand-off runs AFTER the fold, for the close-out commit itself, not for the
+  # already-merged change the fold just closed. Falling back to the TICKET as the key (still
+  # never the branch — the bug this fixes) keeps that call working instead of hard-erroring on a
+  # marker that has legitimately stopped existing.
+  hoff_change_id="$(dc_change_for_ticket "$REPO" "$hoff_ticket")" || hoff_change_id="$hoff_ticket"
+fi
+
+# Records T (this HEAD — the last pushed WORK commit) as the change's latest handoff tip (spec
+# §2b item 3): `state assert-archivable`'s merge-style-keyed check reads it back, keyed by
+# change-id, never by branch. Recorded unconditionally (every mode) — the fix loop hands off the
+# SAME change again after an earlier squash/merge, and the LATEST tip is what the merged check
+# must compare, with earlier ones kept for the squash fallback.
+#
+# The record itself is committed and pushed HERE, as its own commit — never left as a dirty
+# tracked file (spec §2b item 3, second defect: a hand-off used to leave `.serpens.yaml` dirty,
+# which every subsequent gate then refused as "uncommitted changes to TRACKED files"). Every check
+# that reads the record back keys off T, the SHA the line names, never off this record commit.
+estate_path="$(dc_estate_path "$REPO")"
+tip_sha="$(git -C "$REPO" rev-parse HEAD)"
+# HEAD may itself be an earlier --handoff's own record commit for this exact change/ticket (this
+# same branch, no new work since) — its parent is T, the last pushed WORK commit, not this commit.
+# Unwrap it so a repeated --handoff never mistakes its own previous record commit for new work.
+head_subject="$(git -C "$REPO" log -1 --pretty=%s "$tip_sha" 2>/dev/null || true)"
+if [[ "$head_subject" == "chore(${hoff_ticket}): record handoff "* ]]; then
+  changed="$(git -C "$REPO" diff --name-only "${tip_sha}^" "$tip_sha" 2>/dev/null)"
+  if [ "$changed" = "$(basename "$estate_path")" ]; then
+    tip_sha="$(git -C "$REPO" rev-parse "${tip_sha}^")"
+  fi
+fi
+dc_record_handoff_tip "$REPO" "$hoff_change_id" "$hoff_ticket" "$tip_sha"
+if [ -n "$(git -C "$REPO" status --porcelain --ignore-submodules=untracked -- "$estate_path" 2>/dev/null)" ]; then
+  short_tip="${tip_sha:0:7}"
+  git -C "$REPO" add -- "$estate_path" \
+    || die "cannot stage $estate_path"
+  # The `Serpens-Handoff-Tip:` trailer (full SHA) is what lets `state assert-archivable` tell a
+  # tool-produced record apart from a hand-edited one (operator decision, 2026-09-24: a correct
+  # refusal must never be worked around by hand-editing `.serpens.yaml` — see the kit prose next
+  # to every `state assert-archivable`/`delivery --handoff` call). Never fake this trailer by
+  # hand: it is the CLI's own proof that IT wrote this record.
+  git -C "$REPO" commit --quiet \
+    -m "chore(${hoff_ticket}): record handoff ${short_tip}" \
+    -m "Serpens-Handoff-Tip: ${tip_sha}" \
+    -- "$estate_path" \
+    || die "cannot commit the handoff record" "  ↳ inspect it: git -C \"$REPO\" status --short"
+  git -C "$REPO" push --quiet origin "HEAD:$branch" \
+    || die "cannot push the handoff record commit" "  ↳ push it yourself: git -C \"$REPO\" push origin HEAD:$branch"
+  echo "✓ recorded handoff tip ${short_tip} for $hoff_change_id (ticket $hoff_ticket); committed + pushed, tree clean" >&2
+else
+  echo "✓ handoff tip for $hoff_change_id (ticket $hoff_ticket) already recorded; nothing new to commit" >&2
+fi
 
 # handoff-to=chat+ticket (spec §2c item 12): the same three facts, in addition to chat, posted as
 # a ticket comment — a tracker must be configured, or this errors naming the gap rather than

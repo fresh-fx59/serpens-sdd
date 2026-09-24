@@ -43,8 +43,11 @@ spns-debugging (any unexpected failure), spns-drill-down (any fact about the sys
    not yours: `<serpens-sdd> git-naming --print-contract <TICKET>` prints `commit-form`,
    `commit-types` and a ready `commit-example`. Write the subject in that form (`feat` for a
    feature, `fix` for a defect), push to the story branch. Then, per `<serpens-sdd>
-   delivery --print-contract`: if `pr-opened-by=human`, run `<serpens-sdd> delivery --handoff`
-   and paste its output to the human verbatim — do NOT create the change request. If `agent`,
+   delivery --print-contract`: if `pr-opened-by=human`, run `<serpens-sdd> delivery --handoff
+   --change <change-id>` and paste its output to the human verbatim — do NOT create the change
+   request; it records this push's tip, committed + pushed by the tool itself, keyed to
+   `<change-id>` so a later `state assert-archivable --change <change-id>` finds it regardless of
+   what branch that runs on. If `agent`,
    open or update it. Paste `git log --oneline -1` plus `git status --short` as evidence.
 7. Done = all boxes ticked + full test suite green + verify-docs green + the work committed and
    pushed. Never claim

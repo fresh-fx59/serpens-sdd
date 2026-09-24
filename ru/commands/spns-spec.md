@@ -116,9 +116,9 @@ serpens-version: 2026-09-23.1
    `git add -A`: в репозитории есть локальные настройки и файлы с паролями, которые нельзя
    коммитить, а созданный тобой файл остаётся untracked, пока ты его не добавишь. Коммить
    `docs(<TICKET>): <текст>`, отправь ветку. Дальше по `<serpens-sdd> delivery --print-contract`:
-   если `pr-opened-by=human` — выполни `<serpens-sdd> delivery --handoff` и вставь его вывод
-   человеку дословно, НЕ создавай change request. Если `agent` — открой или обнови spec change
-   request сам. Верни в историю сводку спеки и ссылку (или handoff). Аналитик не выполняет
+   если `pr-opened-by=human` — выполни `<serpens-sdd> delivery --handoff --change <change-id>` и
+   вставь его вывод человеку дословно, НЕ создавай change request. Если `agent` — открой или
+   обнови spec change request сам. Верни в историю сводку спеки и ссылку (или handoff). Аналитик не выполняет
    Git-операции.
 
 4. НЕСКОЛЬКО РЕПОЗИТОРИЕВ — СНАЧАЛА TICKETS. `ticket-topology` (из `<serpens-sdd> delivery
@@ -168,9 +168,9 @@ serpens-version: 2026-09-23.1
    `<serpens-sdd> verify-docs` и
    `<openspec> validate <contract-change-id> --type change --strict --json`; правь, пока оба не
    зелёные и не `"valid": true`. Затем закоммить, отправь. По `<serpens-sdd> delivery
-   --print-contract`: если `pr-opened-by=human` — выполни `<serpens-sdd> delivery --handoff` и
-   вставь его вывод человеку дословно, НЕ создавай change request стора. Если `agent` — открой
-   его сам. Верни ссылку (или handoff) в parent.
+   --print-contract`: если `pr-opened-by=human` — выполни `<serpens-sdd> delivery --handoff
+   --change <contract-change-id>` и вставь его вывод человеку дословно, НЕ создавай change
+   request стора. Если `agent` — открой его сам. Верни ссылку (или handoff) в parent.
 
 6. ДЛЯ КАЖДОГО РЕПОЗИТОРИЯ, по одному. Каждый дочерний тикет принадлежит ровно одному
    репозиторию, и его артефакты живут ВНУТРИ этого репозитория, никогда в сторе:
@@ -243,8 +243,8 @@ serpens-version: 2026-09-23.1
       `<openspec> validate <change-id> --type change --strict --json`; правь до `"valid": true`.
    d. Добавь change folder по пути, коммит `docs(<child-ticket>): <текст>`, push. Дальше по
       `<serpens-sdd> delivery --print-contract`: если `pr-opened-by=human` — выполни
-      `<serpens-sdd> delivery --handoff` и вставь его вывод человеку дословно, НЕ создавай change
-      request; вложи этот handoff в ticket. Если `agent` — открой его и вложи ссылку в ticket.
+      `<serpens-sdd> delivery --handoff --change <change-id>` и вставь его вывод человеку
+      дословно, НЕ создавай change request; вложи этот handoff в ticket. Если `agent` — открой его и вложи ссылку в ticket.
       Никогда `git add -A`; не оставляй шаг незакоммиченным.
 
 7. В каждом child зафиксируй порядок: согласовать контракт первым (фиксированное правило);

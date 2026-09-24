@@ -39,8 +39,11 @@ serpens-version: 2026-09-23.1
    `<serpens-sdd> git-naming --print-contract <TICKET>` печатает `commit-form`, `commit-types` и
    готовый `commit-example`. Пиши тему в этой форме (`feat` для функции, `fix` для дефекта),
    отправляй в ветку истории. Дальше по `<serpens-sdd> delivery --print-contract`: если
-   `pr-opened-by=human` — выполни `<serpens-sdd> delivery --handoff` и вставь его вывод человеку
-   дословно, НЕ создавай change request. Если `agent` — открой или обнови его сам. Приложи вывод
+   `pr-opened-by=human` — выполни `<serpens-sdd> delivery --handoff --change <change-id>` и
+   вставь его вывод человеку дословно, НЕ создавай change request; эта команда записывает tip
+   этого push и сама коммитит + пушит запись, привязанную к `<change-id>`, так что более поздний
+   `state assert-archivable --change <change-id>` найдёт её независимо от того, на какой ветке он
+   выполняется. Если `agent` — открой или обнови его сам. Приложи вывод
    `git log --oneline -1` и `git status --short`.
 7. Готово только при закрытых задачах, зелёном полном наборе тестов, verify-docs и
    закоммиченной отправленной работе. Приложи свежий вывод последнего запуска.

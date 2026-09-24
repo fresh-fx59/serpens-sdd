@@ -9,7 +9,7 @@ usage() {
 usage:
   bash repository-state.sh inspect [--repo <path>] [--base <branch>]
   bash repository-state.sh prepare-base [--repo <path>] [--base <branch>]
-  bash repository-state.sh assert-archivable [--repo <path>] [--base <branch>]
+  bash repository-state.sh assert-archivable [--repo <path>] [--base <branch>] [--change <change-id>]
   bash repository-state.sh assert-change <TICKET> [--repo <path>] [--allow-dirty] [--checkout] [--conventions <path>]
   bash repository-state.sh mark-change <CHANGE-ID> --ticket <TICKET> [--repo <path>]
 EOF
@@ -44,6 +44,7 @@ CHECKOUT=0
 CONVENTIONS=""
 MARK_TICKET=""
 CONFIRM_SQUASH_REEDIT=0
+ASSERT_CHANGE_ID=""
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --repo) REPO=${2:-}; shift 2 ;;
@@ -53,12 +54,17 @@ while [ "$#" -gt 0 ]; do
     --conventions) CONVENTIONS=${2:-}; shift 2 ;;
     --ticket) MARK_TICKET=${2:-}; shift 2 ;;
     --confirm-squash-reedit) CONFIRM_SQUASH_REEDIT=1; shift ;;
+    --change) ASSERT_CHANGE_ID=${2:-}; shift 2 ;;
     -h|--help) usage; exit 0 ;;
     *) echo "✗ unknown argument: $1" >&2; usage; exit 2 ;;
   esac
 done
 if [ "$MODE" != assert-archivable ] && [ "$CONFIRM_SQUASH_REEDIT" -eq 1 ]; then
   echo "✗ --confirm-squash-reedit is valid only with assert-archivable" >&2
+  exit 2
+fi
+if [ "$MODE" != assert-archivable ] && [ -n "$ASSERT_CHANGE_ID" ]; then
+  echo "✗ --change is valid only with assert-archivable" >&2
   exit 2
 fi
 case "$MODE" in inspect|prepare-base|assert-archivable|assert-change|mark-change) ;; *) echo "✗ unknown mode: $MODE" >&2; usage; exit 2 ;; esac
@@ -284,34 +290,52 @@ if [ "$MODE" = assert-archivable ]; then
   fi
 
   # spec-org-facts-slice-delivery-2026-09-23.md §2b item 3: with `merge-style` configured, the
-  # recorded handoff-tip SHA (delivery --handoff writes it to <repo-root>/.serpens.yaml) is
-  # checked against origin/$BASE by the rule the shop's own merge-style implies — a REAL "did MY
-  # commits land" check, replacing the plain ancestor proxy below (which stays, unchanged, for an
-  # estate that has not set merge-style yet — "in addition to", never a silent fallback between
-  # the two once merge-style IS set).
+  # recorded handoff-tip SHA (delivery --handoff writes it to <repo-root>/.serpens.yaml, KEYED BY
+  # CHANGE-ID, never by branch — a story branch is usually deleted after merge, and archive runs
+  # on a fresh close-out branch that never had its own hand-off) is checked against origin/$BASE
+  # by the rule the shop's own merge-style implies — a REAL "did MY commits land" check, replacing
+  # the plain ancestor proxy below (which stays, unchanged, for an estate that has not set
+  # merge-style yet — "in addition to", never a silent fallback between the two once merge-style
+  # IS set).
   if [ -n "$DC_MERGE_STYLE" ]; then
-    tip=$(dc_latest_handoff_tip "$REPO" "$branch")
-    if [ -z "$tip" ] && git -C "$REPO" merge-base --is-ancestor HEAD "origin/$BASE"; then
-      # A branch with no commits of its own beyond the base has nothing under review, so a
-      # hand-off from it proves nothing. Typical case: the archive close-out branch the agent
-      # just cut (eval 2026-09-24, scenario b) — the merged proof belongs BEFORE that cut.
-      die_state "merge-style=$DC_MERGE_STYLE is set but no handoff tip is recorded for $branch" \
-        "  ↳ $branch has no commits of its own beyond origin/$BASE — nothing on it was handed off or merged" \
-        "  ↳ run this check BEFORE you cut a close-out branch, on the branch you stood on when the merged change was handed off (often $BASE itself)" \
-        "  ↳ if it already passed there, that proof stands: do not re-run it here, and do not run delivery --handoff to make it pass"
-    fi
+    [ -n "$ASSERT_CHANGE_ID" ] || die_state "merge-style=$DC_MERGE_STYLE is set but no --change <change-id> was given" \
+      "  ↳ run: bash repository-state.sh assert-archivable --change <change-id>" \
+      "  ↳ the handoff tip is recorded per change, never per branch (a story branch is usually deleted after merge)"
+    dc_ticket_for_change "$REPO" "$ASSERT_CHANGE_ID" >/dev/null \
+      || die_state "no marked change $ASSERT_CHANGE_ID" \
+        "  ↳ inspect it: cat \"$REPO/openspec/changes/$ASSERT_CHANGE_ID/.serpens.yaml\"" \
+        "  ↳ run: bash repository-state.sh mark-change $ASSERT_CHANGE_ID --ticket <TICKET> first"
+    tip=$(dc_latest_handoff_tip "$REPO" "$ASSERT_CHANGE_ID")
     if [ -z "$tip" ]; then
-      die_state "merge-style=$DC_MERGE_STYLE is set but no handoff tip is recorded for $branch" \
-        "  ↳ run: <serpens-sdd> delivery --handoff   (this records the pushed tip in $(dc_estate_path "$REPO"))"
+      die_state "merge-style=$DC_MERGE_STYLE is set but no handoff tip is recorded for $ASSERT_CHANGE_ID" \
+        "  ↳ run: <serpens-sdd> delivery --handoff --change $ASSERT_CHANGE_ID   (this records the pushed tip in $(dc_estate_path "$REPO"))" \
+        "  ↳ run it on the branch you stood on when the merged change was handed off, BEFORE you cut a close-out branch"
     fi
     if ! git -C "$REPO" cat-file -e "$tip" 2>/dev/null; then
       die_state "recorded handoff tip $tip for $branch is not a known commit here" \
         "  ↳ fetch it first: git -C \"$REPO\" fetch origin"
     fi
+    # Operator decision, 2026-09-24 (eval part7-b, samples 1/2): a correct refusal must never be
+    # answerable by hand-editing `.serpens.yaml`. `delivery --handoff` stamps every record commit
+    # with a `Serpens-Handoff-Tip: <full-sha>` trailer — its own proof that IT wrote the record.
+    # For `merge`/`rebase` styles (whose individual commits survive into `origin/$BASE`'s own
+    # history once the change is genuinely merged), require that trailer to be found there before
+    # trusting the tip at all. `squash` is exempt: the record commit's own identity is discarded
+    # by a real squash-merge, so this check would always fail there — squash instead leans on the
+    # path-set identity check below, which is its own (weaker but real) forgery resistance.
+    handoff_record_verified() {
+      local base="$1" full_tip="$2"
+      [ -n "$(git -C "$REPO" log "origin/$base" -F --grep="Serpens-Handoff-Tip: $full_tip" --format=%H 2>/dev/null | head -1)" ]
+    }
     case "$DC_MERGE_STYLE" in
       merge)
         if git -C "$REPO" merge-base --is-ancestor "$tip" "origin/$BASE"; then
-          echo "✓ merge-style=merge: recorded tip ${tip:0:12} is an ancestor of origin/$BASE (archivable)"
+          if ! handoff_record_verified "$BASE" "$tip"; then
+            die_state "recorded tip ${tip:0:12} has no matching \`delivery --handoff\`-produced record commit in origin/$BASE's history" \
+              "  ↳ expected a commit trailer \`Serpens-Handoff-Tip: $tip\` — its absence means this record was likely hand-edited into .serpens.yaml, never produced by the tool" \
+              "  ↳ never hand-edit .serpens.yaml or fabricate a handoff-tip line; if this change genuinely was not handed off yet, run: <serpens-sdd> delivery --handoff --change $ASSERT_CHANGE_ID on the branch that carries the real work"
+          fi
+          echo "✓ merge-style=merge: recorded tip ${tip:0:12} is an ancestor of origin/$BASE, with a verified delivery --handoff record (archivable)"
           exit 0
         fi
         die_state "merge-style=merge check failed: recorded tip ${tip:0:12} is NOT an ancestor of origin/$BASE" \
@@ -322,7 +346,12 @@ if [ "$MODE" = assert-archivable ]; then
         cherry_out=$(git -C "$REPO" cherry "origin/$BASE" "$tip" 2>/dev/null || true)
         unapplied=$(printf '%s\n' "$cherry_out" | grep -c '^+' || true)
         if [ "$unapplied" -eq 0 ]; then
-          echo "✓ merge-style=rebase: every commit up to tip ${tip:0:12} is already applied on origin/$BASE (\`git cherry\` shows no + lines; archivable)"
+          if ! handoff_record_verified "$BASE" "$tip"; then
+            die_state "recorded tip ${tip:0:12} has no matching \`delivery --handoff\`-produced record commit in origin/$BASE's history" \
+              "  ↳ expected a commit trailer \`Serpens-Handoff-Tip: $tip\` — its absence means this record was likely hand-edited into .serpens.yaml, never produced by the tool" \
+              "  ↳ never hand-edit .serpens.yaml or fabricate a handoff-tip line; if this change genuinely was not handed off yet, run: <serpens-sdd> delivery --handoff --change $ASSERT_CHANGE_ID on the branch that carries the real work"
+          fi
+          echo "✓ merge-style=rebase: every commit up to tip ${tip:0:12} is already applied on origin/$BASE (\`git cherry\` shows no + lines), with a verified delivery --handoff record (archivable)"
           exit 0
         fi
         die_state "merge-style=rebase check failed: $unapplied commit(s) up to tip ${tip:0:12} are NOT applied on origin/$BASE (\`git cherry\` shows + lines)" \
@@ -333,33 +362,37 @@ if [ "$MODE" = assert-archivable ]; then
         mb=$(git -C "$REPO" merge-base "$tip" "origin/$BASE") \
           || die_state "cannot compute a merge-base of tip ${tip:0:12} and origin/$BASE" \
             "  ↳ they may share no history — inspect: git -C \"$REPO\" log --oneline -1 $tip; git -C \"$REPO\" log --oneline -1 origin/$BASE"
-        paths_tip=$(git -C "$REPO" diff --name-only "$mb" "$tip" | LC_ALL=C sort)
-        paths_base=$(git -C "$REPO" diff --name-only "$mb" "origin/$BASE" | LC_ALL=C sort)
+        # `.serpens.yaml` is excluded on purpose: it never carries any of THIS change's own work —
+        # `delivery --handoff` commits the record to it AFTER computing tip (T), so T's own diff
+        # never includes it; the filter is defensive (spec §2b item 3, second defect) in case some
+        # other flow ever touches it earlier.
+        paths_tip=$(git -C "$REPO" diff --name-only "$mb" "$tip" | grep -v '^\.serpens\.yaml$' | LC_ALL=C sort)
+        paths_base=$(git -C "$REPO" diff --name-only "$mb" "origin/$BASE" | grep -v '^\.serpens\.yaml$' | LC_ALL=C sort)
         if [ "$paths_tip" != "$paths_base" ]; then
           die_state "merge-style=squash check failed: changed paths at tip ${tip:0:12} (since diverging at ${mb:0:12}) differ from origin/$BASE's changed paths over the same range" \
             "  ↳ tip's paths: git -C \"$REPO\" diff --name-only $mb $tip" \
             "  ↳ base's paths: git -C \"$REPO\" diff --name-only $mb origin/$BASE" \
             "  ↳ the squash-merge for this tip has not landed on origin/$BASE yet, or a different change landed instead"
         fi
-        tip_count=$(dc_handoff_tips "$REPO" "$branch" | wc -l | tr -d ' ')
+        tip_count=$(dc_handoff_tips "$REPO" "$ASSERT_CHANGE_ID" | wc -l | tr -d ' ')
         if [ "$tip_count" -le 1 ]; then
           echo "✓ merge-style=squash: changed paths at tip ${tip:0:12} match origin/$BASE's changed paths since diverging (archivable)"
           exit 0
         fi
-        # More than one handoff tip recorded for this branch means it was pushed again after an
-        # earlier squash-merge — spec §2b item 3's fallback: the path-set match alone cannot tell
-        # a genuine re-verification apart from a coincidental re-edit of the same files, so a
+        # More than one handoff tip recorded for this change means it was handed off again after
+        # an earlier squash-merge — spec §2b item 3's fallback: the path-set match alone cannot
+        # tell a genuine re-verification apart from a coincidental re-edit of the same files, so a
         # human confirms once, and that confirmation (keyed on THIS exact tip) is never re-asked.
-        if dc_squash_confirmed "$REPO" "$branch" "$tip"; then
+        if dc_squash_confirmed "$REPO" "$ASSERT_CHANGE_ID" "$tip"; then
           echo "✓ merge-style=squash: changed paths match origin/$BASE; the re-edit ambiguity for tip ${tip:0:12} was already confirmed by a human (archivable)"
           exit 0
         fi
         if [ "$CONFIRM_SQUASH_REEDIT" -eq 1 ]; then
-          dc_record_squash_confirm "$REPO" "$branch" "$tip"
+          dc_record_squash_confirm "$REPO" "$ASSERT_CHANGE_ID" "$tip"
           echo "✓ merge-style=squash: changed paths match origin/$BASE; re-edit ambiguity confirmed by human for tip ${tip:0:12} — recorded, will not be re-asked (archivable)"
           exit 0
         fi
-        die_state "merge-style=squash: changed paths at tip ${tip:0:12} match origin/$BASE, but $tip_count handoff tips are recorded for $branch — this branch was pushed again after what looks like an earlier squash-merge, touching the same paths again, which a path-set check alone cannot tell apart from a true match" \
+        die_state "merge-style=squash: changed paths at tip ${tip:0:12} match origin/$BASE, but $tip_count handoff tips are recorded for $ASSERT_CHANGE_ID — this change was handed off again after what looks like an earlier squash-merge, touching the same paths again, which a path-set check alone cannot tell apart from a true match" \
           "  ↳ a human must confirm this is really archivable: re-run with --confirm-squash-reedit" \
           "  ↳ inspect the history since diverging: git -C \"$REPO\" log --oneline $mb..$tip"
         ;;

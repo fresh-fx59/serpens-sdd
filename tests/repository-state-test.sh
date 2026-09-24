@@ -396,42 +396,92 @@ write_delivery_merge_style() {
 | \`merge-style\` | $1 |
 EOF
 }
+# Marks a change (openspec/changes/<id>/.serpens.yaml), exactly as `state mark-change` would —
+# assert-archivable --change <id> resolves the ticket from this marker, never from the CURRENT
+# branch (§2b item 3 fix 1: a story branch is usually deleted after merge, and archive can run
+# from any branch, e.g. develop).
+mark_change_dir() {
+  # $1=change-id $2=ticket
+  mkdir -p "$REPO/openspec/changes/$1"
+  cat > "$REPO/openspec/changes/$1/.serpens.yaml" <<EOF
+# serpens-sdd:change-marker
+owner: serpens-sdd
+ticket: $2
+branch: feature/$2
+created: 2026-09-24
+EOF
+}
 record_tip() {
-  # branch tip — appends a handoff-tip line to <repo>/.serpens.yaml, exactly as delivery.sh
-  # --handoff would (tested independently in test/delivery-contract.test.mjs); done directly here
-  # so this fixture stays a pure Bash/Git test with no Node dependency.
-  printf 'handoff-tip: %s %s\n' "$1" "$2" >> "$REPO/.serpens.yaml"
+  # keyed by CHANGE-ID (+ticket), never by branch — appends a handoff-tip line to
+  # <repo>/.serpens.yaml, exactly as delivery.sh --handoff would (tested independently, with the
+  # real commit+push mechanics, in test/delivery-contract.test.mjs); done directly here so this
+  # fixture stays a pure Bash/Git test with no Node dependency. NEVER committed here — used only
+  # by tests whose merge-style is `squash` (exempt from the trailer-commit forgery check below,
+  # spec §2b item 3b) or that never reach that check at all (the un-merged/no-tip failure paths).
+  # merge/rebase's PASSING tests use record_tip_committed instead.
+  # $1=change-id $2=ticket $3=sha
+  printf 'handoff-tip: %s %s %s\n' "$1" "$2" "$3" >> "$REPO/.serpens.yaml"
+}
+# For merge/rebase PASSING cases: a real, committed record with the `Serpens-Handoff-Tip:`
+# trailer `delivery --handoff` stamps — required so assert-archivable's forgery check (operator
+# decision 2026-09-24, eval part7-b) finds it. Call this INSTEAD of record_tip, on the SAME branch
+# as $3 (the tip), BEFORE that branch is merged/cherry-picked — the record commit must ride along.
+record_tip_committed() {
+  # $1=change-id $2=ticket $3=sha
+  printf 'handoff-tip: %s %s %s\n' "$1" "$2" "$3" >> "$REPO/.serpens.yaml"
+  G -C "$REPO" add .serpens.yaml
+  G -C "$REPO" commit --quiet -m "chore($2): record handoff ${3:0:7}" -m "Serpens-Handoff-Tip: $3"
 }
 
 echo "T26 merge-style=merge: recorded tip an ancestor of origin/develop passes"
 restore_repo
 write_delivery_merge_style merge
+mark_change_dir mrg-1 MRG-1
 G -C "$REPO" checkout --quiet -B feature/MRG-1 origin/develop
 printf 'work\n' >> "$REPO/state.txt"
 G -C "$REPO" commit --quiet -am 'feat(MRG-1): work'
 tip=$(G -C "$REPO" rev-parse HEAD)
-record_tip feature/MRG-1 "$tip"
+record_tip_committed mrg-1 MRG-1 "$tip"
 G -C "$REPO" checkout --quiet develop
 G -C "$REPO" merge --quiet --no-ff -m 'merge MRG-1' feature/MRG-1
 G -C "$REPO" push --quiet origin develop
-G -C "$REPO" checkout --quiet feature/MRG-1
-out=$(run_state assert-archivable); rc=$?
-if [ "$rc" -eq 0 ] && grep -q "merge-style=merge" <<<"$out" && grep -q "is an ancestor of origin/develop" <<<"$out"; then
-  ok "merge-style=merge check passed on a genuinely merged tip"
+G -C "$REPO" branch -D feature/MRG-1 >/dev/null 2>&1 || true
+# On develop now — the story branch is gone, exactly as it usually is after a real merge; the
+# check must still find the tip via --change, never via the (now nonexistent) branch name.
+out=$(run_state assert-archivable --change mrg-1); rc=$?
+if [ "$rc" -eq 0 ] && grep -q "merge-style=merge" <<<"$out" && grep -q "is an ancestor of origin/develop" <<<"$out" \
+  && grep -q "verified delivery --handoff record" <<<"$out"; then
+  ok "merge-style=merge check passed on a genuinely merged tip, from develop, story branch deleted"
 else
   no "merge-style=merge check did not pass (rc=$rc)" "$out"
 fi
-G -C "$REPO" push --quiet origin --delete feature/MRG-1 >/dev/null 2>&1 || true
+# Cleanup: record_tip_committed tracked .serpens.yaml into origin/develop's real history — untrack
+# it again so every LATER test's restore_repo goes back to an untracked-.serpens.yaml baseline
+# (plain record_tip's untracked-append shape, which every other test still relies on).
+G -C "$REPO" rm --quiet .serpens.yaml
+G -C "$REPO" commit --quiet -m 'test cleanup: untrack .serpens.yaml (T26)'
+G -C "$REPO" push --quiet origin develop
+
+echo "T26b assert-archivable --change fails clearly when merge-style is set but no --change was given"
+restore_repo
+write_delivery_merge_style merge
+out=$(run_state assert-archivable); rc=$?
+if [ "$rc" -eq 1 ] && grep -q "no --change <change-id> was given" <<<"$out"; then
+  ok "missing --change refused, naming the fix"
+else
+  no "missing --change was not refused as expected (rc=$rc)" "$out"
+fi
 
 echo "T27 merge-style=merge: recorded tip NOT an ancestor of origin/develop fails naming the reason"
 restore_repo
 write_delivery_merge_style merge
+mark_change_dir mrg-2 MRG-2
 G -C "$REPO" checkout --quiet -B feature/MRG-2 origin/develop
 printf 'unmerged\n' >> "$REPO/state.txt"
 G -C "$REPO" commit --quiet -am 'feat(MRG-2): unmerged work'
 tip=$(G -C "$REPO" rev-parse HEAD)
-record_tip feature/MRG-2 "$tip"
-out=$(run_state assert-archivable); rc=$?
+record_tip mrg-2 MRG-2 "$tip"
+out=$(run_state assert-archivable --change mrg-2); rc=$?
 if [ "$rc" -eq 1 ] && grep -q "merge-style=merge check failed" <<<"$out" \
   && grep -q "is NOT an ancestor of origin/develop" <<<"$out"; then
   ok "merge-style=merge check named the specific reason for an un-merged tip"
@@ -442,31 +492,42 @@ fi
 echo "T28 merge-style=rebase: git cherry shows every commit already applied passes"
 restore_repo
 write_delivery_merge_style rebase
+mark_change_dir rbs-1 RBS-1
 G -C "$REPO" checkout --quiet -B feature/RBS-1 origin/develop
 printf 'rebase-work\n' >> "$REPO/state.txt"
 G -C "$REPO" commit --quiet -am 'feat(RBS-1): work'
 tip=$(G -C "$REPO" rev-parse HEAD)
-record_tip feature/RBS-1 "$tip"
+record_tip_committed rbs-1 RBS-1 "$tip"
+record_commit=$(G -C "$REPO" rev-parse HEAD)
 G -C "$REPO" checkout --quiet develop
-G -C "$REPO" cherry-pick --quiet feature/RBS-1
+G -C "$REPO" cherry-pick --quiet "$tip"
+G -C "$REPO" cherry-pick --quiet "$record_commit"
 G -C "$REPO" push --quiet origin develop
 G -C "$REPO" checkout --quiet feature/RBS-1
-out=$(run_state assert-archivable); rc=$?
-if [ "$rc" -eq 0 ] && grep -q "merge-style=rebase" <<<"$out" && grep -q "already applied" <<<"$out"; then
+out=$(run_state assert-archivable --change rbs-1); rc=$?
+if [ "$rc" -eq 0 ] && grep -q "merge-style=rebase" <<<"$out" && grep -q "already applied" <<<"$out" \
+  && grep -q "verified delivery --handoff record" <<<"$out"; then
   ok "merge-style=rebase check passed when git cherry shows no + lines"
 else
   no "merge-style=rebase check did not pass (rc=$rc)" "$out"
 fi
+# Cleanup: untrack .serpens.yaml from origin/develop again (same reason as T26's cleanup).
+G -C "$REPO" checkout --quiet develop
+G -C "$REPO" rm --quiet .serpens.yaml
+G -C "$REPO" commit --quiet -m 'test cleanup: untrack .serpens.yaml (T28)'
+G -C "$REPO" push --quiet origin develop
+G -C "$REPO" checkout --quiet feature/RBS-1
 
 echo "T29 merge-style=rebase: an un-applied commit fails naming the reason"
 restore_repo
 write_delivery_merge_style rebase
+mark_change_dir rbs-2 RBS-2
 G -C "$REPO" checkout --quiet -B feature/RBS-2 origin/develop
 printf 'rebase-unapplied\n' >> "$REPO/state.txt"
 G -C "$REPO" commit --quiet -am 'feat(RBS-2): unapplied work'
 tip=$(G -C "$REPO" rev-parse HEAD)
-record_tip feature/RBS-2 "$tip"
-out=$(run_state assert-archivable); rc=$?
+record_tip rbs-2 RBS-2 "$tip"
+out=$(run_state assert-archivable --change rbs-2); rc=$?
 if [ "$rc" -eq 1 ] && grep -q "merge-style=rebase check failed" <<<"$out" \
   && grep -q "are NOT applied on origin/develop" <<<"$out"; then
   ok "merge-style=rebase check named the un-applied-commit reason"
@@ -477,33 +538,43 @@ fi
 echo "T30 merge-style=squash: changed paths at the tip equal origin/develop's diff since diverging, passes"
 restore_repo
 write_delivery_merge_style squash
+mark_change_dir sqh-1 SQH-1
 G -C "$REPO" checkout --quiet -B feature/SQH-1 origin/develop
 printf 'squash-work\n' > "$REPO/squash-file.txt"
 G -C "$REPO" add squash-file.txt
 G -C "$REPO" commit --quiet -m 'feat(SQH-1): work'
 tip=$(G -C "$REPO" rev-parse HEAD)
-record_tip feature/SQH-1 "$tip"
+record_tip sqh-1 SQH-1 "$tip"
 G -C "$REPO" checkout --quiet develop
 G -C "$REPO" merge --quiet --squash feature/SQH-1
 G -C "$REPO" commit --quiet -m 'feat(SQH-1): work (squashed)'
 G -C "$REPO" push --quiet origin develop
 G -C "$REPO" checkout --quiet feature/SQH-1
-out=$(run_state assert-archivable); rc=$?
+out=$(run_state assert-archivable --change sqh-1); rc=$?
 if [ "$rc" -eq 0 ] && grep -q "merge-style=squash" <<<"$out" && grep -q "changed paths" <<<"$out"; then
   ok "merge-style=squash check passed when changed paths match"
 else
   no "merge-style=squash check did not pass (rc=$rc)" "$out"
 fi
 
+# NOTE: the squash path-set check's defensive `.serpens.yaml` exclusion (§2b item 3, fix 2 — a
+# real handoff record commit always lands AFTER T, so it is never part of T's own diff in
+# practice) is covered directly in test/delivery-contract.test.mjs, which drives the real
+# commit+push mechanics end to end. A bare-Git reproduction here would have to commit
+# `.serpens.yaml` into `develop`'s own history to exercise it, which permanently tracks that file
+# for every later test in this script (each restore_repo resets to that same origin/develop) —
+# not worth the collateral breakage in a fixture this many tests share.
+
 echo "T31 merge-style=squash: a path mismatch fails naming the reason"
 restore_repo
 write_delivery_merge_style squash
+mark_change_dir sqh-2 SQH-2
 G -C "$REPO" checkout --quiet -B feature/SQH-2 origin/develop
 printf 'squash-work-2\n' > "$REPO/squash-file-2.txt"
 G -C "$REPO" add squash-file-2.txt
 G -C "$REPO" commit --quiet -m 'feat(SQH-2): work'
 tip=$(G -C "$REPO" rev-parse HEAD)
-record_tip feature/SQH-2 "$tip"
+record_tip sqh-2 SQH-2 "$tip"
 # origin/develop moves ahead with an UNRELATED change instead of this one's squash-merge.
 G -C "$REPO" checkout --quiet develop
 printf 'unrelated\n' > "$REPO/unrelated-file.txt"
@@ -511,7 +582,7 @@ G -C "$REPO" add unrelated-file.txt
 G -C "$REPO" commit --quiet -m 'chore: unrelated'
 G -C "$REPO" push --quiet origin develop
 G -C "$REPO" checkout --quiet feature/SQH-2
-out=$(run_state assert-archivable); rc=$?
+out=$(run_state assert-archivable --change sqh-2); rc=$?
 if [ "$rc" -eq 1 ] && grep -q "merge-style=squash check failed" <<<"$out" \
   && grep -q "differ from origin/develop" <<<"$out"; then
   ok "merge-style=squash check named the path-mismatch reason"
@@ -522,42 +593,43 @@ fi
 echo "T32 squash re-edit fallback: a second push touching the same paths asks for one human confirmation, then remembers it"
 restore_repo
 write_delivery_merge_style squash
+mark_change_dir sqh-3 SQH-3
 G -C "$REPO" checkout --quiet -B feature/SQH-3 origin/develop
 printf 'first\n' > "$REPO/squash-file-3.txt"
 G -C "$REPO" add squash-file-3.txt
 G -C "$REPO" commit --quiet -m 'feat(SQH-3): first pass'
 tip1=$(G -C "$REPO" rev-parse HEAD)
-record_tip feature/SQH-3 "$tip1"
+record_tip sqh-3 SQH-3 "$tip1"
 G -C "$REPO" checkout --quiet develop
 G -C "$REPO" merge --quiet --squash feature/SQH-3
 G -C "$REPO" commit --quiet -m 'feat(SQH-3): first pass (squashed)'
 G -C "$REPO" push --quiet origin develop
-# Fix loop (spec §2b item 1): same branch name, re-cut from the now-updated base, pushed again,
-# editing the SAME path — a second handoff tip for the same branch name.
+# Fix loop (spec §2b item 1): same change, branch deleted and re-cut from the now-updated base,
+# handed off again, editing the SAME path — a second handoff tip for the same change-id.
 G -C "$REPO" branch -D feature/SQH-3 >/dev/null
 G -C "$REPO" checkout --quiet -B feature/SQH-3 origin/develop
 printf 'second\n' >> "$REPO/squash-file-3.txt"
 G -C "$REPO" commit --quiet -am 'feat(SQH-3): second pass, same file'
 tip2=$(G -C "$REPO" rev-parse HEAD)
-record_tip feature/SQH-3 "$tip2"
+record_tip sqh-3 SQH-3 "$tip2"
 G -C "$REPO" checkout --quiet develop
 G -C "$REPO" merge --quiet --squash feature/SQH-3
 G -C "$REPO" commit --quiet -m 'feat(SQH-3): second pass (squashed)'
 G -C "$REPO" push --quiet origin develop
 G -C "$REPO" checkout --quiet feature/SQH-3
-out=$(run_state assert-archivable); rc=$?
+out=$(run_state assert-archivable --change sqh-3); rc=$?
 if [ "$rc" -eq 1 ] && grep -q "touching the same paths again" <<<"$out" && grep -q -- "--confirm-squash-reedit" <<<"$out"; then
   ok "ambiguous re-edit was refused without confirmation, naming the flag"
 else
   no "ambiguous re-edit was not refused as expected (rc=$rc)" "$out"
 fi
-out2=$(run_state assert-archivable --confirm-squash-reedit); rc2=$?
+out2=$(run_state assert-archivable --change sqh-3 --confirm-squash-reedit); rc2=$?
 if [ "$rc2" -eq 0 ] && grep -q "confirmed by human" <<<"$out2"; then
   ok "explicit confirmation passed the check and recorded it"
 else
   no "confirmed re-run did not pass (rc=$rc2)" "$out2"
 fi
-out3=$(run_state assert-archivable); rc3=$?
+out3=$(run_state assert-archivable --change sqh-3); rc3=$?
 if [ "$rc3" -eq 0 ] && grep -q "already confirmed by a human" <<<"$out3"; then
   ok "a second run did not re-ask — the recorded confirmation was reused"
 else
@@ -567,34 +639,28 @@ fi
 echo "T33 merge-style set but no handoff tip recorded fails naming the fix"
 restore_repo
 write_delivery_merge_style merge
+mark_change_dir mrg-3 MRG-3
 G -C "$REPO" checkout --quiet -B feature/MRG-3 origin/develop
 printf 'no-tip\n' >> "$REPO/state.txt"
 G -C "$REPO" commit --quiet -am 'feat(MRG-3): no recorded tip'
-out=$(run_state assert-archivable); rc=$?
-if [ "$rc" -eq 1 ] && grep -q "no handoff tip is recorded for feature/MRG-3" <<<"$out" \
-  && grep -q "delivery --handoff" <<<"$out"; then
+out=$(run_state assert-archivable --change mrg-3); rc=$?
+if [ "$rc" -eq 1 ] && grep -q "no handoff tip is recorded for mrg-3" <<<"$out" \
+  && grep -q "delivery --handoff --change mrg-3" <<<"$out"; then
   ok "missing handoff tip refused, naming the fix"
 else
   no "missing handoff tip was not refused as expected (rc=$rc)" "$out"
 fi
 restore_repo
 
-echo "T33b merge-style set, fresh close-out branch (no own commits, no tip) is refused WITHOUT sending the agent to delivery --handoff"
-# Eval 2026-09-24 (scenario b, 4/4 samples): the agent proved the change merged on develop, cut
-# the close-out branch, re-ran this check there, was told to run `delivery --handoff`, and dug
-# itself into a dirty-tree / unmerged-own-tip loop. A branch with no commits beyond the base has
-# nothing under review — a hand-off there proves nothing and must not be suggested.
+echo "T33b merge-style set, no marked change for the given --change id fails naming the fix"
 restore_repo
 write_delivery_merge_style merge
-G -C "$REPO" checkout --quiet -B feature/MRG-4 origin/develop
-out=$(run_state assert-archivable); rc=$?
-if [ "$rc" -eq 1 ] && grep -q "no handoff tip is recorded for feature/MRG-4" <<<"$out" \
-  && grep -q "has no commits of its own beyond origin/develop" <<<"$out" \
-  && grep -q "BEFORE you cut" <<<"$out" \
-  && ! grep -q "run: <serpens-sdd> delivery --handoff" <<<"$out"; then
-  ok "fresh close-out branch refused with the ordering explanation, no hand-off suggestion"
+out=$(run_state assert-archivable --change ghost-1); rc=$?
+if [ "$rc" -eq 1 ] && grep -q "no marked change ghost-1" <<<"$out" \
+  && grep -q "mark-change ghost-1 --ticket" <<<"$out"; then
+  ok "unmarked --change id refused, naming the fix"
 else
-  no "fresh close-out branch message wrong (rc=$rc)" "$out"
+  no "unmarked --change id was not refused as expected (rc=$rc)" "$out"
 fi
 restore_repo
 

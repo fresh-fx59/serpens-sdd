@@ -102,3 +102,31 @@ test('OpenSpec stub rejects invented commands, preserves recognized responses, a
     assert.equal(line.slice(line.indexOf(' openspec ') + 10), calls[i].map((arg) => JSON.stringify(arg)).join(' '));
   });
 });
+
+// spec-org-facts-slice-delivery-2026-09-23.md §2b item 3, fix (slice B part 7, eval 2026-09-24
+// part7-b): the archive-ready fixture's change folder + handoff-tip record must be pre-seeded
+// EXACTLY as a real spec/implement pass + `delivery --handoff` would have left them BEFORE the
+// PR merged — keyed by change-id (+ticket), never by branch. The original fixture keyed the tip
+// to `develop`, silently masking the very branch-vs-change-id bug this design fixes (samples 1/2
+// of that run: assert-archivable found no tip, and the model fabricated one by hand instead of
+// doing the archive work).
+test('archive-ready fixture pre-marks the change and records the handoff tip by change-id, never by branch', (t) => {
+  const target = targetFor(t);
+  build(target, ['--variant=archive-ready']);
+  const repo = join(target, 'sample-service');
+
+  const marker = readFileSync(join(repo, 'openspec/changes/SVC-142/.serpens.yaml'), 'utf8');
+  assert.match(marker, /^ticket: SVC-142$/m);
+
+  const estate = readFileSync(join(repo, '.serpens.yaml'), 'utf8');
+  assert.match(estate, /^handoff-tip: SVC-142 SVC-142 [0-9a-f]{40}$/m);
+  assert.doesNotMatch(estate, /^handoff-tip: develop /m, 'must never key the tip by branch name');
+
+  // End-to-end proof: the real CLI's assert-archivable passes IMMEDIATELY, with no hand-off
+  // needed and no branch switch — exactly the state a genuinely-merged, already-marked change is
+  // in when archive starts.
+  const bin = fileURLToPath(new URL('../bin/serpens-sdd.mjs', import.meta.url));
+  const result = spawnSync('node', [bin, 'state', 'assert-archivable', '--change', 'SVC-142', '--repo', repo], { encoding: 'utf8' });
+  assert.equal(result.status, 0, result.stdout + result.stderr);
+  assert.match(result.stdout, /merge-style=merge/);
+});

@@ -351,16 +351,23 @@ dc_resolved_integration_branch() {
 # the change-directory `.serpens.yaml` marker, written by `repository-state.sh mark-change`,
 # already covers — a different file, same name, different scope, never confused because the
 # change-directory one lives under openspec/changes/<id>/ and this one lives at the repo root):
-#   - handoff-tip: <branch> <sha>       — every tip `delivery --handoff` has ever recorded for a
-#     branch, oldest first; the LATEST one wins for the merged check, earlier ones are kept for
-#     the squash fallback (a fix-loop push to the SAME branch name after an earlier squash-merge).
-#   - squash-confirmed: <branch> <sha>  — a human's one-time confirmation that a squash re-edit
-#     ambiguity for this exact (branch, tip) really is archivable; never re-asked for that tip.
+#   - handoff-tip: <change-id> <ticket> <sha>  — every tip `delivery --handoff` has ever recorded
+#     for a CHANGE (never a branch — a story branch is usually deleted after merge, and archive
+#     runs on a fresh close-out branch that never had its own hand-off; §2b item 3 fix), oldest
+#     first; the LATEST one wins for the merged check, earlier ones are kept for the squash
+#     fallback (a fix-loop hand-off on the same change after an earlier squash-merge).
+#   - squash-confirmed: <change-id> <sha>  — a human's one-time confirmation that a squash re-edit
+#     ambiguity for this exact (change, tip) really is archivable; never re-asked for that tip.
 #   - archive-when-confirmed: <value>   — the human's one-time confirmation of which archive-when
 #     value this estate uses, so the agent asks at most once per estate.
 # Line-based, not real YAML, on purpose: the same "grep it, append to it, never rewrite history"
 # shape as every other serpens-sdd state file. Appends only; nothing here is ever edited in place
 # except a fresh archive-when-confirmed line, deliberately singular (one estate, one answer).
+#
+# `delivery --handoff` is the only writer, and it commits+pushes this file itself (its own
+# `chore(<TICKET>): record handoff <short-sha>` commit) so the tree is never left dirty — the
+# checks below always key off the SHA recorded in the line (T, the last pushed WORK commit), never
+# off the record commit that carries it.
 dc_estate_path() {
   local root="${1:-.}"
   printf '%s/.serpens.yaml\n' "$root"
@@ -371,24 +378,24 @@ dc_estate_ensure() {
   [ -f "$path" ] || printf '# serpens-sdd:estate-state\n' > "$path"
 }
 
-# Records a new handoff tip for $branch unless it already IS the latest recorded tip (so a
+# Records a new handoff tip for $change_id unless it already IS the latest recorded tip (so a
 # second --handoff on an unchanged HEAD does not grow the file forever).
 dc_record_handoff_tip() {
-  local root="$1" branch="$2" sha="$3" path
+  local root="$1" change_id="$2" ticket="$3" sha="$4" path
   path="$(dc_estate_path "$root")"
   dc_estate_ensure "$path"
   local latest
-  latest="$(dc_latest_handoff_tip "$root" "$branch")"
+  latest="$(dc_latest_handoff_tip "$root" "$change_id")"
   [ "$latest" = "$sha" ] && return 0
-  printf 'handoff-tip: %s %s\n' "$branch" "$sha" >> "$path"
+  printf 'handoff-tip: %s %s %s\n' "$change_id" "$ticket" "$sha" >> "$path"
 }
 
-# All recorded tips for $branch, oldest first, one per line.
+# All recorded tips for $change_id, oldest first, one per line.
 dc_handoff_tips() {
-  local root="$1" branch="$2" path
+  local root="$1" change_id="$2" path
   path="$(dc_estate_path "$root")"
   [ -f "$path" ] || return 0
-  grep -F "handoff-tip: $branch " "$path" 2>/dev/null | awk '{print $3}'
+  grep -F "handoff-tip: $change_id " "$path" 2>/dev/null | awk '{print $4}'
 }
 
 dc_latest_handoff_tip() {
@@ -396,18 +403,56 @@ dc_latest_handoff_tip() {
 }
 
 dc_record_squash_confirm() {
-  local root="$1" branch="$2" sha="$3" path
+  local root="$1" change_id="$2" sha="$3" path
   path="$(dc_estate_path "$root")"
   dc_estate_ensure "$path"
-  dc_squash_confirmed "$root" "$branch" "$sha" && return 0
-  printf 'squash-confirmed: %s %s\n' "$branch" "$sha" >> "$path"
+  dc_squash_confirmed "$root" "$change_id" "$sha" && return 0
+  printf 'squash-confirmed: %s %s\n' "$change_id" "$sha" >> "$path"
 }
 
 dc_squash_confirmed() {
-  local root="$1" branch="$2" sha="$3" path
+  local root="$1" change_id="$2" sha="$3" path
   path="$(dc_estate_path "$root")"
   [ -f "$path" ] || return 1
-  grep -qF "squash-confirmed: $branch $sha" "$path" 2>/dev/null
+  grep -qF "squash-confirmed: $change_id $sha" "$path" 2>/dev/null
+}
+
+# ---- change-id / ticket lookup (§2b item 3 fix) -------------------------------------------------
+# The handoff record is keyed by the CHANGE being delivered, never by branch name. Both directions
+# are needed: `delivery --handoff` (run on the story branch, ticket known from the branch name)
+# must find WHICH marked change owns that ticket; `state assert-archivable --change <id>` (run on
+# whatever branch archive happens to be on) must find the ticket a given change-id was marked
+# with, purely to report it — the lookup it actually needs is change-id -> tip, direct.
+
+# Reads openspec/changes/<change-id>/.serpens.yaml's `ticket:` line (written by
+# repository-state.sh mark-change). Prints the ticket; fails if the change is not marked.
+dc_ticket_for_change() {
+  local root="$1" change_id="$2" marker t
+  marker="$root/openspec/changes/$change_id/.serpens.yaml"
+  [ -f "$marker" ] || return 1
+  t="$(grep -E '^ticket: ' "$marker" 2>/dev/null | head -1 | sed 's/^ticket: //')"
+  [ -n "$t" ] || return 1
+  printf '%s\n' "$t"
+}
+
+# Reverse lookup: scans every marked change under openspec/changes/ for one whose ticket matches.
+# Prints the change-id on exactly one match; fails (silently — the caller reports) on 0 or >1,
+# so a caller can never guess between two ambiguous changes for the same ticket.
+dc_change_for_ticket() {
+  local root="$1" ticket="$2" changes_dir dir marker t found=""
+  changes_dir="$root/openspec/changes"
+  [ -d "$changes_dir" ] || return 1
+  for dir in "$changes_dir"/*/; do
+    [ -d "$dir" ] || continue
+    marker="${dir}.serpens.yaml"
+    [ -f "$marker" ] || continue
+    t="$(grep -E '^ticket: ' "$marker" 2>/dev/null | head -1 | sed 's/^ticket: //')"
+    [ "$t" = "$ticket" ] || continue
+    [ -z "$found" ] || return 1
+    found="$(basename "${dir%/}")"
+  done
+  [ -n "$found" ] || return 1
+  printf '%s\n' "$found"
 }
 
 dc_record_archive_when_confirm() {

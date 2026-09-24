@@ -77,8 +77,10 @@ predates versioning or is your own; `MODIFIED` means it carries a stamp but not 
    `<serpens-sdd> git-naming --print-contract <TICKET>` — no suffix, because `git-naming` accepts
    the configured shape and nothing else, so a suffixed branch fails the pre-push guard. `--branch <name>` names that branch; `--here` archives on the current
    branch.
-   Every mode is gated by `assert-archivable`, which requires a clean tree and a
-   HEAD that already contains the configured base.
+   Every mode is gated by `assert-archivable --change <change-id>`, which requires a clean tree
+   and a HEAD that already contains the configured base — always pass `--change`: with
+   `merge-style` configured, the hand-off tip it checks is recorded per CHANGE, never per branch
+   (a story branch is usually gone by the time you archive).
 
 The exact generated OpenSpec invocations live in `serpens/port-facts.md` and the installed
 commands. Re-probe them after every port or OpenSpec upgrade.

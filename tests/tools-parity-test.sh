@@ -350,6 +350,10 @@ parity_case() {
   # usage dump) rather than re-demanding a usage string this edition deliberately extended.
   if [ "$label" = "state-bad-mode" ] || [ "$label" = "state-no-args" ]; then
     err_a="${err_a//bash repository-state.sh assert-change <TICKET> \[--repo <path>\] \[--allow-dirty\] \[--checkout\]/bash repository-state.sh assert-change <TICKET> [--repo <path>] [--allow-dirty] [--checkout] [--conventions <path>]}"
+    # spec-org-facts-slice-delivery-2026-09-23.md §2b item 3: assert-archivable gained an
+    # optional `--change <change-id>` flag (the handoff record is keyed by change-id, never by
+    # branch). Same normalize-the-known-line treatment as --conventions above.
+    err_a="${err_a//bash repository-state.sh assert-archivable \[--repo <path>\] \[--base <branch>\]/bash repository-state.sh assert-archivable [--repo <path>] [--base <branch>] [--change <change-id>]}"
     # spec-tools-parity-fix-2026-09-23.md (amended): repository-state.sh gained a whole new
     # MODE, `mark-change` (records the branch a change was created under — is_serpens_work()
     # above reads it back), after the reference was frozen. Rather than pin one more hard-coded

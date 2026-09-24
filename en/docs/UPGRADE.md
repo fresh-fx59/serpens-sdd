@@ -370,7 +370,7 @@ with the exact manual step. Concretely:
 - Every installed command and skill is checked byte-for-byte against what stage 6 would have
   written for it (the kit source with the resolved `<openspec>`/`<serpens-sdd>` tokens
   substituted); an edited copy is kept and reported, never deleted.
-- `serpens/testing-stack.md`, `serpens/branching.md` and `serpens/port-facts.md` are **kept** —
+- `serpens/testing-stack.md`, `serpens/branching.md`, `serpens/delivery.md` and `serpens/port-facts.md` are **kept** —
   they hold real answers, not placeholders — unless `--include-history` is given.
 - `.serpens.yaml` change markers are **never removed by default**: they are change history.
   `--include-history` removes the marker files only, never `research.md` or any other change

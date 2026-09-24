@@ -301,7 +301,7 @@ export const INIT_LOG_IGNORE = '.serpens-sdd-init-*.log';
 export async function seedRepoFacts(ctx) {
   const { repoRoot, kitDir, dryRun = false } = ctx;
   const evidence = [];
-  // Only branching.md. port-facts.md is NOT seeded from the raw template here (deviation from
+  // branching.md and delivery.md, both only when absent. port-facts.md is NOT seeded from the raw template here (deviation from
   // the spec's table, recorded there): in repo-local the repository that holds the facts is
   // also the one stage 5 onboards, and stage 5's verify-docs lints `serpens/port-facts.md` —
   // the raw template fails that lint by design (placeholder header, `...` probe row). In store

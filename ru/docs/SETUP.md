@@ -216,6 +216,7 @@ fast-forward. Про stash и коммиты на других локальны�
 test -x "$SERPENS_SYSTEM_STORE_ROOT/serpens/bin/serpens-sdd" && "$SERPENS_SYSTEM_STORE_ROOT/serpens/bin/serpens-sdd" version
 install -m 0644 "$SERPENS_SDD_ROOT/templates/port-facts.md" "$SERPENS_SYSTEM_STORE_ROOT/serpens/port-facts.md"
 install -m 0644 "$SERPENS_SDD_ROOT/templates/conventions-branching.md" "$SERPENS_SYSTEM_STORE_ROOT/serpens/branching.md"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/conventions-delivery.md" "$SERPENS_SYSTEM_STORE_ROOT/serpens/delivery.md"
 mkdir -p "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates"
 install -m 0644 "$SERPENS_SDD_ROOT/templates/store-contract.md"  "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates/"
 install -m 0644 "$SERPENS_SDD_ROOT/templates/testing-stack.md"   "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates/"
@@ -538,11 +539,11 @@ serpens-sdd init --config ../serpens-sdd.json
 ```
 
 - `store:` и `repositories:` при `topology: repo-local` — ошибка конфигурации.
-- Выполняются этапы 0, 3 (кладёт `serpens/branching.md`, только если его нет), 5, 6, 8, 9.
+- Выполняются этапы 0, 3 (кладёт `serpens/branching.md` и `serpens/delivery.md`, только если их нет), 5, 6, 8, 9.
   Этапы 1 и 4 и регистрация хранилища не выполняются. `prepare-base` тоже не выполняется:
   init не переключает вашу ветку и не делает fetch; он только проверяет, что
   `repo.base_branch` существует, и записывает её в `git config serpens.baseBranch`.
-- Факты лежат в самом репозитории: `serpens/branching.md`, `serpens/port-facts.md`,
+- Факты лежат в самом репозитории: `serpens/branching.md`, `serpens/delivery.md`, `serpens/port-facts.md`,
   `serpens/testing-stack.md`. В `serpens/topology` записано `repo-local`; `catalog` и
   `sync-submodules` там отказываются работать. В `openspec/config.yaml` не добавляется
   запись `references:`.

@@ -35,7 +35,7 @@ required.
 - submodule sync, repository-state gates, docs checks, and indexes: reached through the `<serpens-sdd>` token in commands and skills, backed by the `@fresh-fx59/serpens-sdd` package and the generated `serpens/bin/serpens-sdd` shim in each repository;
 - `commands/`: seven Serpens workflow command templates with explicit OpenSpec calls;
 - `skills/`: six self-contained Serpens skills;
-- `templates/`: research, ADR, contract, testing stack, port facts, and branch conventions;
+- `templates/`: research, ADR, contract, testing stack, port facts, branch conventions, and delivery conventions;
 - `config/`: normalized inventory example and lefthook example;
 - `slides/`: the talk deck and its editable source.
 

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import { run } from '../run.mjs';
 import { kitPath } from '../integrity.mjs';
 
-/** The package's own tools/ directory — the single home of the ten executables. */
+/** The package's own tools/ directory — the single home of the eleven executables. */
 const TOOLS_DIR = fileURLToPath(new URL('../../tools/', import.meta.url)).replace(/\/$/, '');
 
 /**

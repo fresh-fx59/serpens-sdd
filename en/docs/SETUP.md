@@ -215,6 +215,7 @@ removing project-owned files:
 test -x "$SERPENS_SYSTEM_STORE_ROOT/serpens/bin/serpens-sdd" && "$SERPENS_SYSTEM_STORE_ROOT/serpens/bin/serpens-sdd" version
 install -m 0644 "$SERPENS_SDD_ROOT/templates/port-facts.md" "$SERPENS_SYSTEM_STORE_ROOT/serpens/port-facts.md"
 install -m 0644 "$SERPENS_SDD_ROOT/templates/conventions-branching.md" "$SERPENS_SYSTEM_STORE_ROOT/serpens/branching.md"
+install -m 0644 "$SERPENS_SDD_ROOT/templates/conventions-delivery.md" "$SERPENS_SYSTEM_STORE_ROOT/serpens/delivery.md"
 mkdir -p "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates"
 install -m 0644 "$SERPENS_SDD_ROOT/templates/store-contract.md"  "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates/"
 install -m 0644 "$SERPENS_SDD_ROOT/templates/testing-stack.md"   "$SERPENS_SYSTEM_STORE_ROOT/serpens/templates/"
@@ -534,11 +535,11 @@ serpens-sdd init --config ../serpens-sdd.json
 ```
 
 - `store:` and `repositories:` are a config error with `topology: repo-local`.
-- Stages run: 0, 3 (seeds `serpens/branching.md`, only when absent), 5, 6, 8, 9. Stages 1 and 4
+- Stages run: 0, 3 (seeds `serpens/branching.md` and `serpens/delivery.md`, only when absent), 5, 6, 8, 9. Stages 1 and 4
   and the store registration do not run. `prepare-base` does not run either: init never
   switches your branch or fetches; it only checks that `repo.base_branch` exists and records
   it as `git config serpens.baseBranch`.
-- Facts live in the repository: `serpens/branching.md`, `serpens/port-facts.md`,
+- Facts live in the repository: `serpens/branching.md`, `serpens/delivery.md`, `serpens/port-facts.md`,
   `serpens/testing-stack.md`. `serpens/topology` says `repo-local`; `catalog` and
   `sync-submodules` refuse there. `openspec/config.yaml` gets no `references:` entry.
 - Command scope follows the port, as in store mode: a `project`-scope port installs into

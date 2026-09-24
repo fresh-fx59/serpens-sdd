@@ -519,8 +519,50 @@ EOF
     git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
       merge --quiet --no-ff -m "Merge pull request #1 from $STORY_BRANCH (SVC-142) — fixture" "$STORY_BRANCH"
     git -C "$REPO" push --quiet origin develop
+    MERGE_SHA="$(git -C "$REPO" rev-parse HEAD)"
     git -C "$REPO" branch -q -D "$STORY_BRANCH"
-    echo "== fixture variant archive-ready: PR simulated merged into origin/develop; origin at $ORIGIN_BARE =="
+
+    # delivery slice (spec-org-facts-slice-delivery-2026-09-23.md §4/§9(b)): install the estate's
+    # delivery-contract with merge-style=merge so `state assert-archivable`'s merge-style-keyed
+    # check (§2b item 3) actually runs, instead of the plain ancestor proxy. The story branch is
+    # gone (a real merge deletes it), so by the time the agent runs assert-archivable it is
+    # standing on `develop` — the recorded handoff tip is therefore keyed to `develop`, matching
+    # `git symbolic-ref HEAD` at check time, exactly as a human's real `delivery --handoff` run
+    # (from develop, right after pulling the merge) would have left it.
+    mkdir -p "$REPO/serpens"
+    cat > "$REPO/serpens/delivery.md" <<DELIVERY
+<!-- serpens:section delivery-contract -->
+| Field | Value |
+|---|---|
+| \`forge-word\`          | PR |
+| \`pr-opened-by\`        | human |
+| \`ticket-topology\`     | parent-story+child-per-repo |
+| \`child-created-by\`    | ask |
+| \`proposal-approval\`   | analyst-in-story |
+| \`test-plan-posted-to\` | same-ticket-comment |
+| \`merge-order\`         | producer,consumers,store-contract |
+| \`review-may-merge\`    | no |
+| \`integration-branch\`  | develop |
+| \`release-branch\`      | master |
+| \`archive-when\`        | after-qa-accepted |
+| \`merge-style\`         | merge |
+| \`handoff-to\`          | chat |
+DELIVERY
+
+    # .serpens.yaml — as \`<serpens-sdd> delivery --handoff\` would have left it (fixture-recorded,
+    # not model-produced): one handoff-tip line for \`develop\`, at the merge commit that IS the
+    # tip pushed to origin/develop above (spec §2b item 3, tools/lib/delivery-contract.sh
+    # dc_record_handoff_tip's own line shape: "handoff-tip: <branch> <sha>").
+    cat > "$REPO/.serpens.yaml" <<SERPENSYAML
+# serpens-sdd:estate-state
+handoff-tip: develop $MERGE_SHA
+archive-when-confirmed: after-qa-accepted
+SERPENSYAML
+    git -C "$REPO" add -A
+    git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
+      commit --quiet --no-verify -m "chore: install delivery contract + recorded handoff tip — fixture"
+    git -C "$REPO" push --quiet origin develop
+    echo "== fixture variant archive-ready: PR simulated merged into origin/develop; delivery contract + .serpens.yaml installed; origin at $ORIGIN_BARE =="
     ;;
   svc142)
     # Scenario (a): unchanged behavior — the change must NOT be merged into develop, so
@@ -550,7 +592,37 @@ EOF
 esac
 
 # --- TASK.md -------------------------------------------------------------------------------
-cat > "$TARGET/TASK.md" <<'EOF'
+case "$VARIANT" in
+  archive-ready)
+    # Scenario (b): the human's own confirmation line, verbatim (spec §9(b) / archive-when
+    # = after-qa-accepted requires exactly this once-per-estate human confirmation before
+    # archive step 0 is allowed to run at all).
+    cat > "$TARGET/TASK.md" <<'EOF'
+# Task
+
+This repository ("sample-service") uses the Serpens SDD workflow. Its installed
+commands and skills (under `.claude/`) are the process to follow for any
+change here — treat them as the process, not this file.
+
+## The change
+
+The account dashboard team's SVC-142 request (the preferred-display-language
+field on `/profile`) has already been through the whole delivery flow: a PR
+was opened by a human, reviewed, and merged into `develop`; testers deployed
+`develop` to the dev stand and verified it there.
+
+SVC-142 was merged to develop and QA accepted it; close it out.
+
+Carry the archive step of this repository's installed workflow through to
+completion: verify the precondition mechanically (do not just read the forge
+or the tracker), cut the archive branch from the integration branch, run
+archive, and hand off — no PR creation for this step, per this estate's
+delivery contract (`pr-opened-by=human` covers the archive branch exactly like
+any other change here).
+EOF
+    ;;
+  *)
+    cat > "$TARGET/TASK.md" <<'EOF'
 # Task
 
 This repository ("sample-service") uses the Serpens SDD workflow. Its installed
@@ -569,6 +641,8 @@ Ticket: SVC-142.
 Carry this change through the workflow this repository already has installed,
 start to finish.
 EOF
+    ;;
+esac
 
 # --- Step 3e: prove the shim resolves ----------------------------------------------------------
 # Bare `serpens/bin/serpens-sdd version` (no arguments) has printed the installed edition since fix round

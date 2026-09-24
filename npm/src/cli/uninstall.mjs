@@ -309,6 +309,7 @@ export function planRoot(root, { includeHistory = false, factsRoot } = {}) {
     const keepUnlessBlank = [
       { rel: LAYOUT.testingStack, kitFile: 'templates/testing-stack.md' },
       { rel: LAYOUT.branching, kitFile: 'templates/conventions-branching.md' },
+      { rel: LAYOUT.delivery, kitFile: 'templates/conventions-delivery.md' },
       { rel: LAYOUT.portFacts, kitFile: 'templates/port-facts.md' },
     ];
     const kept = [];
@@ -551,7 +552,7 @@ function buildHeader(allActions) {
   // install, or never byte-identical to what we would have written) — never "nothing existed".
   const teamEdited = allActions.filter((a) => !a.reversible && a.row !== 11 && a.reason !== 'nothing to remove');
   lines.push('Kept on purpose:');
-  lines.push('  - serpens/testing-stack.md, serpens/port-facts.md (real answers, not placeholders)');
+  lines.push('  - serpens/testing-stack.md, serpens/branching.md, serpens/delivery.md, serpens/port-facts.md (real answers, not placeholders)');
   lines.push('  - .serpens.yaml change markers (change history, unless --include-history)');
   if (teamEdited.length === 0) {
     lines.push('  - team-edited files: none found');

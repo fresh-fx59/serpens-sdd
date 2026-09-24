@@ -35,6 +35,7 @@ const TOOL_PURPOSES = {
   'split-brain': 'Check for contract split-brain between spec and code',
   state: 'Report or prepare repository state for a change',
   'git-naming': 'Check git branch/tag naming conventions',
+  delivery: 'Print the delivery-convention contract, or the hand-off text for pr-opened-by=human',
   'openspec-root': 'Check the openspec root is correctly located',
   'sync-submodules': 'Sync git submodules to their pinned refs',
   catalog: 'Aggregate per-folder indexes into one catalog',

@@ -68,7 +68,10 @@ predates versioning or is your own; `MODIFIED` means it carries a stamp but not 
    the expected stored rows on the dev stand — posted per `test-plan-posted-to` (from
    `<serpens-sdd> delivery --print-contract`), `same-ticket-comment` by default, never a separate
    test task. `spns-autotest` is the in-code layer.
-6. After merge, `spns-archive`: place the archive commit, then run OpenSpec archive.
+6. Once `archive-when` (from `<serpens-sdd> delivery --print-contract`) is satisfied — QA's
+   sign-off on the dev stand by default (`after-qa-accepted`), or merge into the integration
+   branch when set to `after-merge` — `spns-archive`: place the archive commit, then run
+   OpenSpec archive.
    With no flag it asks you which of three placements to use and never picks for you; option (1)
    cuts a fresh story branch from the prepared base, named by
    `<serpens-sdd> git-naming --print-contract <TICKET>` — no suffix, because `git-naming` accepts

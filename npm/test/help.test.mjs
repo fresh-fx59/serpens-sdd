@@ -7,7 +7,7 @@ import helpMain from '../src/cli/help.mjs';
 test('help names all seven workflow commands and all fifteen tool commands', () => {
   const h = buildHelp({ port: 'gigacode', scope: 'user', lang: 'en', edition: '2026-08-26.8' });
   assert.equal(h.workflow.length, 7);
-  assert.equal(h.commands.length, 15);
+  assert.equal(h.commands.length, 16);
   assert.equal(h.install.port, 'gigacode');
   for (const c of [...h.workflow, ...h.commands]) assert.ok(c.purpose.length > 0, c.name);
 });

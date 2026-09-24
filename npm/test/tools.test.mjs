@@ -33,7 +33,7 @@ test('every TOOL_COMMANDS key is dispatchable: buildCommandTable (used by bin/se
   }
   // and nothing extra: table has exactly TOOL_COMMANDS' keys plus 'help', 'verify-docs',
   // 'uninstall', 'opsx-sync', 'check-schema'
-  assert.equal(Object.keys(table).length, Object.keys(TOOL_COMMANDS).length + 5);
+  assert.equal(Object.keys(table).length, Object.keys(TOOL_COMMANDS).length + 6);
 });
 
 test('a name not in TOOL_COMMANDS fails cleanly from toolPath, not silently', () => {

@@ -18,6 +18,13 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    spns-drill-down (central catalog → repo index → live files; repo wins; ≤3 hops). Verify every
    contract fact against live code. Interview the analyst — ONE question at a time,
    multiple-choice preferred — until requirements and Given/When/Then scenarios are unambiguous.
+   Answer from the story, the repository and live code first; ask only what none of them answers.
+   Then run `<serpens-sdd> mode`. Never decide this yourself — only its output counts.
+   - It prints `attended` (the default): interview the analyst as above and WAIT for each answer.
+   - Only if it prints `unattended`: do not stop to ask. Pick the most conservative answer the
+     story supports, write each one into the proposal as `Assumption: <question> -> <answer
+     chosen>`, and go on to step 2. In that mode an open question never ends the run; only a
+     gate below that tells you to STOP does.
    Every scenario must name what a tester SENDS and what they OBSERVE from outside the running system
    — a request, an event, a row, a status code. A requirement checkable only from inside is either
    reworded into an observable one now, while it is a sentence, or handed to `spns-autotest` and said
@@ -34,7 +41,9 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    Before creating any ticket, branch, commit or change request, state the plan and WAIT for the
    analyst: which repos, which is the producer, which tickets already exist, which you would
    create, and how many change requests (`forge-word` from `<serpens-sdd> delivery
-   --print-contract`) this will open. Never fan out silently.
+   --print-contract`) this will open. Never fan out silently. Only if `<serpens-sdd> mode`
+   printed `unattended`: print the plan and continue on the single-repo path without waiting; a
+   multi-repo fan-out still needs a human — report it as your blocker. Otherwise WAIT.
 
 3. SINGLE REPO. Place yourself BEFORE creating anything.
    a. TICKET GATE. The branch name is built from a real tracker key. If `{{args}}` carries none

@@ -152,6 +152,9 @@ export function buildCommandTable() {
     // 'check-schema' (item 4b, Option C): the shared entry-precondition kit commands run
     // before doing anything else — same CLI-layer shape as `uninstall`/`opsx-sync`.
     'check-schema': 'check-schema.mjs',
+    // 'mode': attended|unattended, from SERPENS_UNATTENDED=1 only — the machine-checked signal
+    // spns-spec uses before it may skip the analyst interview / WAIT gate.
+    mode: 'mode.mjs',
     ...Object.fromEntries(Object.keys(TOOL_COMMANDS).map((name) => [name, 'tools.mjs'])),
   };
 }

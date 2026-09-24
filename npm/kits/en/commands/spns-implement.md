@@ -24,6 +24,10 @@ spns-debugging (any unexpected failure), spns-drill-down (any fact about the sys
 3. Per task: write the failing test from the spec scenario (fast unit tier; slow
    integration tier only at task boundaries) → implement → run → record evidence in
    tasks.md → tick the checkbox → overwrite the state header. Do NOT commit per task.
+   WRITE FILES DIRECTLY: `cat > <path> <<'EOF'` … `EOF`, one file per command. If a write fails
+   on quoting, retry it smaller (split the file, or `printf '%s\n' 'line' … > <path>`). Never
+   write a helper script (`/tmp/x.mjs`, `.py`, `.sh`) and run it to produce files — running your
+   own script is a forbidden action even when it only writes a file.
 4. On spec/code mismatch STOP and classify: (a) spec incomplete, or an acceptance scenario no longer
    observable as written — when a delta spec exists, draft an amendment to it on this branch, run
    `<openspec> validate <change-id> --type change --strict --json` on the amended delta and fix

@@ -44,6 +44,7 @@ const TOOL_PURPOSES = {
   uninstall: 'Reverse a serpens-sdd install; dry-run by default, --apply to execute',
   'opsx-sync': "Re-run `openspec update` for a relocated port (e.g. gigacode) and relocate the refresh; dry-run by default, --apply to execute",
   'check-schema': 'Entry precondition: stop if the OpenSpec schema in effect is not the built-in spec-driven one',
+  mode: 'Print `unattended` only when SERPENS_UNATTENDED=1 is set, else `attended`; kit prose may skip human gates only on `unattended`',
 };
 
 /**

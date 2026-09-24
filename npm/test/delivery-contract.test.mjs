@@ -4,7 +4,7 @@
 // tools/lib/branch-contract.sh / test/branch-contract.test.mjs.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
@@ -241,6 +241,27 @@ test('--handoff on an unpushed branch fails naming the fix', async () => {
   assert.match(result.stderr, /has no upstream — push it first/);
 });
 
+// Eval 2026-09-24 (scenario b): an agent handed off a freshly cut branch with NO commits of its
+// own; the recorded tip was origin/develop's own tip, so `state assert-archivable` then reported
+// that branch "merged" — a false positive. A branch with nothing beyond the base has nothing to
+// hand off, and no tip may be recorded for it.
+test('--handoff on a pushed branch with no commits beyond the base refuses and records no tip', async () => {
+  const origin = mkdtempSync(join(tmpdir(), 'serpens-sdd-delivery-origin-'));
+  execFileSync('git', ['init', '--quiet', '--bare', '-b', 'develop'], { cwd: origin });
+  const repo = makeRepo();
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
+  execFileSync('git', ['-C', repo, 'fetch', '-q', 'origin']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/SVC-7', 'origin/develop']);
+  execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/SVC-7']);
+
+  const result = await delivery(['--handoff'], repo);
+  assert.equal(result.code, 1, result.stdout);
+  assert.match(result.stderr, /feature\/SVC-7 has no commits beyond origin\/develop — nothing to hand off/);
+  assert.doesNotMatch(result.stdout, /Pushed branch:/);
+  assert.equal(existsSync(join(repo, '.serpens.yaml')), false, 'no handoff tip may be recorded');
+});
+
 test('--handoff with pr-opened-by=agent prints the agent-may-open wording', async () => {
   const origin = mkdtempSync(join(tmpdir(), 'serpens-sdd-delivery-origin-'));
   execFileSync('git', ['init', '--quiet', '--bare', '-b', 'develop'], { cwd: origin });
@@ -255,6 +276,9 @@ test('--handoff with pr-opened-by=agent prints the agent-may-open wording', asyn
   execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
   execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
   execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/SVC-2']);
+  writeFileSync(join(repo, 'y.txt'), 'y\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'y.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(SVC-2): work']);
   execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/SVC-2']);
 
   const result = await delivery(['--handoff'], repo);
@@ -407,6 +431,9 @@ test('handoff-to=chat+ticket with a stub tracker posts the exact hand-off text a
   execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
   execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
   execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/SVC-10']);
+  writeFileSync(join(repo, 'w.txt'), 'w\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'w.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(SVC-10): work']);
   execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/SVC-10']);
 
   const capture = join(repo, 'posted.txt');
@@ -435,6 +462,9 @@ test('handoff-to=chat+ticket with NO tracker configured errors naming the gap, n
   execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
   execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
   execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/SVC-11']);
+  writeFileSync(join(repo, 'w.txt'), 'w\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'w.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(SVC-11): work']);
   execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/SVC-11']);
 
   const result = await delivery(['--handoff'], repo);

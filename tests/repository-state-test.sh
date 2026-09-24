@@ -579,6 +579,25 @@ else
 fi
 restore_repo
 
+echo "T33b merge-style set, fresh close-out branch (no own commits, no tip) is refused WITHOUT sending the agent to delivery --handoff"
+# Eval 2026-09-24 (scenario b, 4/4 samples): the agent proved the change merged on develop, cut
+# the close-out branch, re-ran this check there, was told to run `delivery --handoff`, and dug
+# itself into a dirty-tree / unmerged-own-tip loop. A branch with no commits beyond the base has
+# nothing under review — a hand-off there proves nothing and must not be suggested.
+restore_repo
+write_delivery_merge_style merge
+G -C "$REPO" checkout --quiet -B feature/MRG-4 origin/develop
+out=$(run_state assert-archivable); rc=$?
+if [ "$rc" -eq 1 ] && grep -q "no handoff tip is recorded for feature/MRG-4" <<<"$out" \
+  && grep -q "has no commits of its own beyond origin/develop" <<<"$out" \
+  && grep -q "BEFORE you cut" <<<"$out" \
+  && ! grep -q "run: <serpens-sdd> delivery --handoff" <<<"$out"; then
+  ok "fresh close-out branch refused with the ordering explanation, no hand-off suggestion"
+else
+  no "fresh close-out branch message wrong (rc=$rc)" "$out"
+fi
+restore_repo
+
 echo "T22 mark-change writes the marker"
 MC=$(mktemp -d)
 G init -q "$MC/repo"; G -C "$MC/repo" config user.email t@t.t; G -C "$MC/repo" config user.name t

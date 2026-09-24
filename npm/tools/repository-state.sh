@@ -291,6 +291,15 @@ if [ "$MODE" = assert-archivable ]; then
   # the two once merge-style IS set).
   if [ -n "$DC_MERGE_STYLE" ]; then
     tip=$(dc_latest_handoff_tip "$REPO" "$branch")
+    if [ -z "$tip" ] && git -C "$REPO" merge-base --is-ancestor HEAD "origin/$BASE"; then
+      # A branch with no commits of its own beyond the base has nothing under review, so a
+      # hand-off from it proves nothing. Typical case: the archive close-out branch the agent
+      # just cut (eval 2026-09-24, scenario b) — the merged proof belongs BEFORE that cut.
+      die_state "merge-style=$DC_MERGE_STYLE is set but no handoff tip is recorded for $branch" \
+        "  ↳ $branch has no commits of its own beyond origin/$BASE — nothing on it was handed off or merged" \
+        "  ↳ run this check BEFORE you cut a close-out branch, on the branch you stood on when the merged change was handed off (often $BASE itself)" \
+        "  ↳ if it already passed there, that proof stands: do not re-run it here, and do not run delivery --handoff to make it pass"
+    fi
     if [ -z "$tip" ]; then
       die_state "merge-style=$DC_MERGE_STYLE is set but no handoff tip is recorded for $branch" \
         "  ↳ run: <serpens-sdd> delivery --handoff   (this records the pushed tip in $(dc_estate_path "$REPO"))"

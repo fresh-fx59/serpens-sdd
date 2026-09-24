@@ -117,6 +117,15 @@ else
     || die "cannot determine the integration branch" "  ↳ set it in serpens/delivery.md, or pass --base <branch>"
 fi
 
+# A branch with nothing beyond the base has nothing to hand off. Recording its tip would be a
+# false "merged" later: that tip IS origin/<base>'s own commit, so every merge-style check passes
+# (eval 2026-09-24, scenario b — a freshly cut, still-empty close-out branch was handed off).
+if git -C "$REPO" rev-parse --verify --quiet "refs/remotes/origin/$base" >/dev/null \
+  && git -C "$REPO" merge-base --is-ancestor HEAD "origin/$base"; then
+  die "$branch has no commits beyond origin/$base — nothing to hand off" \
+    "  ↳ commit the work for this branch first, push it, then run --handoff again"
+fi
+
 subject=$(git -C "$REPO" log -1 --pretty=%s HEAD 2>/dev/null || true)
 title="feat: ${subject:-$branch}"
 if [[ "$subject" =~ ^[a-z]+\([A-Za-z0-9-]+\): ]]; then

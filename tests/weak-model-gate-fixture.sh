@@ -117,7 +117,21 @@ esac
 echo "== fixture target: $TARGET =="
 
 REPO="$TARGET/sample-service"
-rm -rf "$REPO"
+# Isolate every git call from the host's global/system git config. A GLOBAL core.hooksPath
+# (contabo's claude-developer points it at the vault's pii-guard dir) otherwise runs whatever
+# hook sits there on every fixture commit/push, and makes a `lefthook install` inside a sample
+# OVERWRITE that shared dir — found 2026-09-24: the pii-guard pre-commit had been replaced by a
+# lefthook wrapper this way. evals/runner.mjs gives the model's shell the same file.
+GIT_CONFIG_GLOBAL="$TARGET/gitconfig"
+printf '[user]\n\tname = Fixture Engineer\n\temail = fixture@example.invalid\n' > "$GIT_CONFIG_GLOBAL"
+export GIT_CONFIG_GLOBAL GIT_CONFIG_NOSYSTEM=1
+# Rebuild-safe: a second build into the same target must start from nothing. Found 2026-09-24:
+# promptfoo re-invokes the provider after a failed sample (e.g. a 504 storm), the runner rebuilt
+# the fixture into the same dir, only sample-service was wiped, the OLD origin.git kept the first
+# build's history, and the new build's `git push origin develop` was rejected ("fetch first").
+# That was the "lefthook config not found" fixture failure: the lefthook line was harmless noise
+# from a global hook printed first on stderr; the push rejection was the real exit 1.
+rm -rf "$REPO" "$TARGET/origin.git" "$TARGET/.origin-advance-clone"
 mkdir -p "$REPO"
 
 # --- Step 1: throwaway target repo ------------------------------------------------------------
@@ -397,7 +411,13 @@ rm -f "$FILL_SCRIPT"
 # exists to catch. The script asserts the result schema-validates, so a schema that grows
 # without this step growing with it is a loud fixture failure, never a silent partial fill.
 mkdir -p "$REPO/serpens/templates" "$REPO/serpens"
-cp "$PKG_DIR/kits/$LANG_CODE/templates/testing-stack.md" "$REPO/serpens/templates/testing-stack.md"
+# Every template a real onboarding installs (stage5-onboard.mjs SPOKE_TEMPLATES), not only
+# testing-stack.md. Found 2026-09-24 (scenario b, fix-b/sample-2): spns-archive step 2 writes the
+# ADR "using serpens/templates/adr.md"; with that file missing the model concluded there was no
+# ADR to write — a fixture gap, not a kit verdict.
+for tpl in adr.md research.md testing-stack.md; do
+  cp "$PKG_DIR/kits/$LANG_CODE/templates/$tpl" "$REPO/serpens/templates/$tpl"
+done
 TS_SCRIPT="$TARGET/.fill-testing-stack.mjs"
 cat > "$TS_SCRIPT" <<'TSFILL'
 import { readFileSync, writeFileSync } from 'node:fs';
@@ -652,6 +672,15 @@ esac
 # against the SPECIFIC per-language kit tree this fixture actually installed from ($LANG_CODE),
 # rather than the CLI's own built-in 'en' default, which would silently agree even if this
 # fixture had installed the ru kit.
+# The kit's git guards live in lefthook.yml; a real onboarding runs `lefthook install` (stage 5).
+# Do the same when lefthook exists, so the guards are active in EVERY sample, not only on hosts
+# where a polluted global hooks dir happened to carry them. Global config is isolated (above), so
+# this writes into this sample's .git/hooks and nowhere else.
+if command -v lefthook >/dev/null 2>&1; then
+  (cd "$REPO" && lefthook install >/dev/null 2>&1) || { echo "FATAL: lefthook install failed in $REPO" >&2; exit 1; }
+  echo "lefthook hooks installed into $REPO/.git/hooks"
+fi
+
 echo "== verifying the shim =="
 (cd "$REPO" && serpens/bin/serpens-sdd version show --root "$PKG_DIR/kits/$LANG_CODE")
 

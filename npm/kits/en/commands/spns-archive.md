@@ -40,7 +40,8 @@ invocation setup resolved.
    the human with the tool's exact message; do not route around it.
    Then place yourself for the close-out commit. With no flag, ask the user ONCE which of the
    three, print the current branch in the question, and wait for the answer — never pick for
-   them:
+   them. The one exception: run `<serpens-sdd> mode`; only if it prints `unattended`, do not ask —
+   take (1), say so in one line, and go on. Never decide that mode yourself.
    - (1) a fresh story branch from the base (the close-out mechanism, no extra questions beyond
      this one regardless of `archive-when` or `merge-style`): run
      `<serpens-sdd> state prepare-base` — the SAME base-branching mechanism every other command

@@ -10,8 +10,9 @@ produce must be something they can send, produce, query or observe from OUTSIDE 
 system. Payloads and queries must be copy-paste ready, not described in prose. A check that
 needs internal calls or private state belongs in `spns-autotest`, not here.
 
-WHAT THE TESTERS CAN ACTUALLY DO is a fact about THIS repository, not about this command. Read
-`serpens/testing-stack.md` and follow its `Manual testing access` section. If that file does not
+WHAT THE TESTERS CAN ACTUALLY DO is a fact about THIS repository, not about this command. Read ONLY
+the `Manual testing access` section of `serpens/testing-stack.md` — exactly
+`sed -n '/^## Manual testing access/,$p' serpens/testing-stack.md` — and follow it. If that file does not
 exist, or the facts you need from it are incomplete, stop and ask the team once, then write it
 from `templates/testing-stack.md` — never guess a client, a transport, a store or a query
 language, and never name a technology that file did not name. `<serpens-sdd> verify-docs` tells

@@ -6,6 +6,8 @@ You are drafting the spec for story {{args}}.
 `<change-id>` is the OpenSpec change folder name; `<openspec>` is the OpenSpec CLI invocation setup
 resolved.
 Follow skills spns-drill-down (all system facts) and spns-verification (all done-claims).
+ONE repository (the usual case): steps 0-3 are the whole command — stop reading at the
+`## CROSS-REPO` line. Read each part of this file once; do not re-read what you already have.
 
 0. SCHEMA GATE, first, always. Run `<serpens-sdd> check-schema`. If it exits non-zero, STOP — do not read further, do not create anything — and report its output verbatim to the analyst; it names the unsupported schema, exactly where it was found, and that support is a deferred follow-up (see spec-skipspecs-and-custom-schemas-2026-09-11.md item 4b).
 
@@ -106,8 +108,9 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
       the requirement text and its scenarios, where they are reviewed and archived. Facts the change
       only DISCOVERS about the system as it already is go to research.md under a heading
       `## OBSERVABLE CONTRACT`, as pointers.
-      WHAT THAT BLOCK CONTAINS is a fact about THIS repository, not about this command. Read
-      `serpens/testing-stack.md` and follow its `Manual testing access` section: record one pointer per
+      WHAT THAT BLOCK CONTAINS is a fact about THIS repository, not about this command. Read ONLY
+      the `Manual testing access` section of `serpens/testing-stack.md` — exactly
+      `sed -n '/^## Manual testing access/,$p' serpens/testing-stack.md` — and follow it: record one pointer per
       slot the repository actually answers — the parts `request-idiom` names for a direct call, what
       `event-addressing` and `event-payload-format` name for a message, the records and fields
       `data-stores` names, and where `error-routing` says a rejection lands. A slot answered `none`
@@ -136,7 +139,11 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
    --print-contract`: if `pr-opened-by=human`, run `<serpens-sdd> delivery --handoff --change
    <change-id>` and paste its output to the human verbatim — do NOT create the change request. If
    `agent`, open (or update) it. Post the spec summary + the handoff (or the change-request link) back to the
-   story. Done.
+   story. VERIFY before reporting: paste the evidence — verify-docs green, `"valid": true`, the
+   pushed commit, and the handoff output (or the change-request link). Never claim done without
+   it. Done.
+
+## CROSS-REPO — only when step 2 found more than one repository (steps 4-9)
 
 4. CROSS-REPO — TICKETS FIRST, driven by what already exists.
    `ticket-topology` (from `<serpens-sdd> delivery --print-contract`) is
@@ -243,21 +250,8 @@ Follow skills spns-drill-down (all system facts) and spns-verification (all done
       `<openspec> spec show` here — the noun-first forms have no `--store` flag and resolve against
       the spoke instead.
       Append verified facts to research.md as pointers. No design.md, no tasks.md.
-      Split the tester's facts by who owns them. Facts this change DEFINES — a new surface, a new
-      field, a new destination, the error contract — are normative: they belong in the delta spec, in
-      the requirement text and its scenarios, where they are reviewed and archived. Facts the change
-      only DISCOVERS about the system as it already is go to research.md under a heading
-      `## OBSERVABLE CONTRACT`, as pointers.
-      WHAT THAT BLOCK CONTAINS is a fact about THIS repository, not about this command. Read
-      `serpens/testing-stack.md` and follow its `Manual testing access` section: record one pointer per
-      slot the repository actually answers — the parts `request-idiom` names for a direct call, what
-      `event-addressing` and `event-payload-format` name for a message, the records and fields
-      `data-stores` names, and where `error-routing` says a rejection lands. A slot answered `none`
-      contributes nothing to this block; do not invent an entry for it, and never name a protocol,
-      store or payload format that file did not name. If the file is missing or the facts you need
-      from it are incomplete, stop and ask the team once, then write it from
-      `templates/testing-stack.md`. One pointer per fact. `spns-test-plan` renders the tester's
-      payloads from the spec's scenarios and this block, so a missing entry costs the tester a guess.
+      Split the tester's facts and write the `## OBSERVABLE CONTRACT` block in research.md exactly
+      as step 3c says — from THIS repository's `serpens/testing-stack.md`, one pointer per fact.
    c. Run `<serpens-sdd> verify-docs`; fix until green. The split-brain lint must pass; if it
       fires you restated a contract fact — delete it and link instead. Then run
       `<openspec> validate <change-id> --type change --strict --json`; fix until `"valid": true`.

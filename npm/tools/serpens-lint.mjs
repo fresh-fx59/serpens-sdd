@@ -421,8 +421,16 @@ for (const p of mdFiles.filter(p => /(^|\/)openspec\/changes\/[^/]+\/proposal\.m
       const specsSubdir = join(changeAbs, 'specs');
       const hasDeltaSpec = existsSync(specsSubdir) && walk(specsSubdir).some((f) => f.endsWith('.md'));
       if (!skipSpecs && !hasDeltaSpec) {
+        // Name a delta written in the wrong place: a root-level .md that is not a known artifact.
+        const known = new Set(['proposal.md', 'design.md', 'tasks.md', 'research.md', 'test-plan.md']);
+        const stray = readdirSync(changeAbs).filter((f) => f.endsWith('.md') && !known.has(f))
+          .map((f) => `${changeRel}/${f}`);
+        const strayNote = stray.length
+          ? `found ${stray.join(', ')} — a delta outside specs/<capability>/ is never read; move it there. `
+          : '';
         err(`${changeRel}/`, 'no delta spec under specs/, and .openspec.yaml does not set skip_specs: true',
-          `write the delta spec (\`<openspec> instructions specs --change ${e.name} --json\`), or if this `
+          `${strayNote}The delta lives at exactly ${changeRel}/specs/<capability>/spec.md (one folder per `
+          + `capability, file named spec.md). Write it (\`<openspec> instructions specs --change ${e.name} --json\`), or if this `
           + 'change truly has no spec-level behavior change, set `skip_specs: true` in .openspec.yaml — '
           + 'never create an empty specs/ placeholder to silence this');
       }

@@ -178,6 +178,19 @@ test('negative control: a change with no skip_specs and no specs/ IS a lint erro
   assert.match(r.out, /skip_specs/);
 });
 
+test('the missing-delta error names the exact delta path, and flags a delta written in the wrong place', (t) => {
+  // Eval evidence 2026-09-24 (part8b-a): weak models hit this error 12x across 5 samples and
+  // retried by guessing — spec.md at the change root, specs/delta.md. The error now says exactly
+  // where the delta lives, and names a stray root-level delta file it found instead.
+  if (requireOpenspec(t)) return;
+  const dir = makeChangeRepo({ skipSpecs: false });
+  writeFileSync(join(dir, 'openspec', 'changes', 'no-spec-here', 'spec.md'), '## ADDED Requirements\n', 'utf8');
+  const r = runLint(dir);
+  assert.equal(r.code, 1, r.out);
+  assert.match(r.out, /openspec\/changes\/no-spec-here\/specs\/<capability>\/spec\.md/, r.out);
+  assert.match(r.out, /found openspec\/changes\/no-spec-here\/spec\.md/, r.out);
+});
+
 // ---------------------------------------------------------------------------------------------
 // 4. Grep gates over the SHIPPED kits — each with a negative control proving the matcher fires.
 // ---------------------------------------------------------------------------------------------

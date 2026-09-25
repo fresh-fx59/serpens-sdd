@@ -60,19 +60,6 @@ Stage 0 asks for these and stops if any is missing:
 | English | [`en/docs/SETUP.md`](en/docs/SETUP.md) | [`en/docs/UPGRADE.md`](en/docs/UPGRADE.md) | [`en/docs/OPERATIONS.md`](en/docs/OPERATIONS.md) |
 | Русский | [`ru/docs/SETUP.md`](ru/docs/SETUP.md) | [`ru/docs/UPGRADE.md`](ru/docs/UPGRADE.md) | [`ru/docs/OPERATIONS.md`](ru/docs/OPERATIONS.md) |
 
-The workflow reference installs nothing and comes in three shapes:
-
-| Language | Workflow reference | Wide table | Schema |
-|---|---|---|---|
-| English | [`en/docs/FLOW.md`](en/docs/FLOW.md) | [`en/docs/FLOW-TABLE.md`](en/docs/FLOW-TABLE.md) | [`en/docs/FLOW-SCHEMA.md`](en/docs/FLOW-SCHEMA.md) |
-| Русский | [`ru/docs/FLOW.md`](ru/docs/FLOW.md) | [`ru/docs/FLOW-TABLE.md`](ru/docs/FLOW-TABLE.md) | [`ru/docs/FLOW-SCHEMA.md`](ru/docs/FLOW-SCHEMA.md) |
-
-An installation still on the 2026-08-05 layout (`clones/` + `repos.json`) moves onto the
-current one with `docs/MIGRATION-71de101-to-current.md`
-([English](en/docs/MIGRATION-71de101-to-current.md) ·
-[Русский](ru/docs/MIGRATION-71de101-to-current.md)) — a historical runbook, still written
-under the old product name.
-
 Setup creates this operational layout:
 
 ```text
@@ -93,7 +80,7 @@ an external Superpowers installation is not required.
 
 The commands name no framework, transport, store or query language of their own. Every one
 of those is a fact about YOUR repository, and they all live in one place —
-`docs/testing-stack.md`, written from `templates/testing-stack.md` at install:
+`serpens/testing-stack.md`, written from `templates/testing-stack.md` at install:
 
 - the FAST and SLOW test tiers and the exact command that runs each (`spns-tdd`);
 - the boundaries only the slow tier catches, and the debugging boundary order
@@ -116,14 +103,14 @@ answer `inherit` in the slots it covers.
 - `docs/common-contract.html`: how a cross-repo contract stays single-owner —
   <https://fresh-fx59.github.io/serpens-sdd/common-contract.html>. Includes the two fetch
   routes a spoke delta needs (change-scoped while the contract change is open, spec-scoped
-  once it is archived), measured against OpenSpec 1.10.0;
+  once it is archived), measured against OpenSpec 1.11–1.13 (the currently supported window);
 - `serpens-sdd-starter-en.zip` / `serpens-sdd-starter-ru.zip`: the same kits as archives;
 
-**The executables are not in this repository.** The ten deterministic scripts and the
+**The executables are not in this repository.** The eleven deterministic scripts and the
 `serpens-sdd` CLI ship in the npm package, which is also where their acceptance suites and
-the package's own `npm test` live. Earlier editions copied eleven scripts into `<store>/tools/`
-and into every onboarded repository; that is what the package replaced, and keeping a second
-copy here would be a second source of truth for the same bytes.
+the package's own `npm test` live. Earlier editions copied the same scripts into
+`<store>/tools/` and into every onboarded repository; that is what the package replaced, and
+keeping a second copy here would be a second source of truth for the same bytes.
 
 Background: [Enterprise spec-driven development with AI agents](https://aiengineerhelper.com/posts/enterprise-spec-driven-development-ai-agents/).
 

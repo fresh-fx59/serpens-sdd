@@ -1,1 +1,36 @@
-{"name":"@fresh-fx59/serpens-sdd","version":"1.20260924.1","serpensSddEdition":"2026-09-24.1","repository":{"type":"git","url":"git+https://github.com/fresh-fx59/serpens-sdd.git"},"type":"module","bin":{"serpens-sdd":"bin/serpens-sdd.mjs"},"engines":{"node":">=18"},"scripts":{"test":"node --test test/*.test.mjs"},"files":["bin","src","ports","kits","tools"]}
+{
+  "name": "@fresh-fx59/serpens-sdd",
+  "version": "1.20260923.1",
+  "serpensSddEdition": "2026-09-23.1",
+  "description": "Spec-driven development across corporate repositories: deterministic repository, branch, documentation and contract gates wrapped around OpenSpec, for teams whose agent CLI is whatever their employer approved and whose network is restricted.",
+  "keywords": [
+    "spec-driven-development",
+    "openspec",
+    "ai-agents",
+    "cli",
+    "developer-tools",
+    "sdd"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fresh-fx59/serpens-sdd.git"
+  },
+  "homepage": "https://github.com/fresh-fx59/serpens-sdd#readme",
+  "type": "module",
+  "bin": {
+    "serpens-sdd": "bin/serpens-sdd.mjs"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "files": [
+    "bin",
+    "src",
+    "ports",
+    "kits",
+    "tools"
+  ]
+}

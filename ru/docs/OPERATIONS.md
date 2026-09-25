@@ -63,7 +63,7 @@ $KV identify  --root "$SERPENS_SDD_ROOT" <файл-установки>    # pris
 3. `spns-implement`: подтверждает ветку, входит в OpenSpec apply и применяет Serpens TDD.
 4. `spns-review`: проверяет состояние, затем выполняет `<openspec> validate <change-id> --type
    change --strict --json` и `<openspec> status --change <change-id> --json` до ревью человеком.
-   Подкоманды `verify` в OpenSpec 1.10 нет.
+   Подкоманды `verify` в поддерживаемом окне OpenSpec 1.11–1.13 нет.
 5. `spns-test-plan` и `spns-autotest`: строят проверки из утверждённых сценариев.
    `spns-test-plan` — **black-box**: запрос или событие для отправки, ожидаемый
    ответ и ожидаемые сохранённые строки на стенде разработки — публикуется по

@@ -114,9 +114,10 @@ project files (README, LICENSE, CHANGELOG, CONTRIBUTING, SECURITY, CODE_OF_CONDU
 Record both names in `serpens/port-facts.md` (P1) so a human reading the note knows what they are.
 
 The installed commands call the OpenSpec **CLI**, never a generated slash command.
-Slash commands differ between versions and profiles — OpenSpec 1.10's core profile
-ships `propose, explore, apply, update, sync, archive` and has no `new`, `continue` or
-`verify` at all — while these six CLI calls are stable and machine-readable. Record ONE
+Slash commands differ between versions and profiles — measured on OpenSpec 1.10.0's core
+profile: `propose, explore, apply, update, sync, archive`, no `new`, `continue` or `verify`
+at all; the currently supported window is 1.11–1.13 — while these six CLI calls are stable
+and machine-readable. Record ONE
 token, the exact invocation of the pinned package:
 
 ```text

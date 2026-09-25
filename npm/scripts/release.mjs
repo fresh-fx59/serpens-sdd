@@ -51,7 +51,7 @@ const KIT_ROOT_SUITES = ['starter-contract-test.sh', 'kit-version-test.sh'];
 const BIN_SUITES = ['tools-parity-test.sh'];
 
 // Suites that take the path to one specific tool inside the package's own `tools/` — a
-// single shared copy now serves both kits (the ten scripts are language-neutral), so these
+// single shared copy now serves both kits (the eleven scripts are language-neutral), so these
 // suites necessarily run once per kit against the SAME target path; that redundancy is
 // deliberate here, not a bug — see buildSteps below.
 const TOOL_SUITES = {

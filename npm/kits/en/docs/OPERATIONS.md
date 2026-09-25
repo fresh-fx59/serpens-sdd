@@ -62,7 +62,7 @@ predates versioning or is your own; `MODIFIED` means it carries a stamp but not 
 3. `spns-implement`: assert the branch, enter OpenSpec apply, then use Serpens TDD.
 4. `spns-review`: inspect state, then run `<openspec> validate <change-id> --type change --strict
    --json` and `<openspec> status --change <change-id> --json` before human review. There is no
-   `verify` subcommand in OpenSpec 1.10.
+   `verify` subcommand in the supported OpenSpec 1.11–1.13 window.
 5. `spns-test-plan` and `spns-autotest`: derive checks from approved scenarios.
    `spns-test-plan` is **black-box**: the request or event to send, the expected response, and
    the expected stored rows on the dev stand — posted per `test-plan-posted-to` (from

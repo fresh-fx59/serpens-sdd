@@ -1,6 +1,6 @@
 ---
 description: Structured pre-review of a diff before humans spend time (any role)
-serpens-version: 2026-09-23.1
+serpens-version: 2026-09-25.1
 ---
 Review the diff of {{args}} (branch/change request/change — the forge word for "change request"
 is this estate's `forge-word` from `<serpens-sdd> delivery --print-contract`). Follow skill

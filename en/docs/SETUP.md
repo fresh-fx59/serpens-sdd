@@ -16,7 +16,7 @@ node --version       # >= 18, runs the .mjs disposers
 lefthook version     # install through the approved internal channel first
 ```
 
-- `@fresh-fx59/serpens-sdd` is installed and `serpens-sdd version` prints edition `2026-09-23.1`.
+- `@fresh-fx59/serpens-sdd` is installed and `serpens-sdd version` prints edition `2026-09-25.1`.
   Node >= 18. Nothing in this procedure copies a script into a repository.
 
 The OpenSpec CLI is pinned and internal. The package is `@fission-ai/openspec`;

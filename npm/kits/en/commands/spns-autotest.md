@@ -1,6 +1,6 @@
 ---
 description: Generate autotest skeletons from an approved delta spec's scenarios (SDET flow)
-serpens-version: 2026-09-23.1
+serpens-version: 2026-09-25.1
 ---
 Generate autotest skeletons for change {{args}}.
 

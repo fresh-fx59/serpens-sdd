@@ -1,6 +1,6 @@
 ---
 description: Структурированное предварительное ревью diff до ревью человеком
-serpens-version: 2026-09-23.1
+serpens-version: 2026-09-25.1
 ---
 `<change-id>` — проверяемое изменение OpenSpec; `<openspec>` — вызов CLI OpenSpec, подставленный
 при установке.

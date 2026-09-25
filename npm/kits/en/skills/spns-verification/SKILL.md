@@ -1,7 +1,7 @@
 ---
 name: spns-verification
 description: Verification before completion — no done-claims without fresh evidence. Use before reporting work finished on a Serpens change (spns-* commands or a change with `.serpens.yaml`).
-serpens-version: 2026-09-23.1
+serpens-version: 2026-09-25.1
 ---
 ## The rule
 Every claim of completion, for every kind of work, carries EVIDENCE produced AFTER the last edit:

@@ -19,7 +19,7 @@ function targetFor(t) {
 function build(target, flags) {
   const result = spawnSync('bash', [fixture, target, ...flags], { encoding: 'utf8' });
   assert.equal(result.status, 0, result.stderr + result.stdout);
-  assert.match(result.stdout, /== fixture built ==/);
+  assert.match(result.stdout, /== fixture built \(kit=serpens\) ==/);
 }
 
 for (const [lang, flags] of [

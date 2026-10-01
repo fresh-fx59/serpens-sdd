@@ -29,7 +29,7 @@ serpens-sdd version show      # prints the installed kit edition
 ```
 
 `init` resolves your agent port, creates the system store, onboards repositories as
-submodules, installs the seven commands and six skills into your agent's own config
+submodules, installs the six commands and six skills into your agent's own config
 directory, wires the pre-commit gate, and writes an evidence file recording exactly what it
 proved. It **never** deletes, resets, cleans, rebases or force-checkouts anything it finds,
 and it stops at the first failed gate. Add `--dry-run` to see every stage's plan first.
@@ -45,3 +45,12 @@ Zoekt are optional.
 - Setup runbook (RU): <https://github.com/fresh-fx59/serpens-sdd/blob/main/ru/docs/SETUP.md>
 - Presentation: <https://fresh-fx59.github.io/serpens-sdd/>
 - Licence: MIT — see [`LICENSE`](https://github.com/fresh-fx59/serpens-sdd/blob/main/LICENSE)
+
+## Release 2026-10-01.1
+
+- Retires `spns-autotest` intentionally. Code-level automated tests are planned by `spns-plan` and executed through `spns-implement`, using the repository's `serpens/testing-stack.md`. `spns-test-plan` produces manual checks.
+- Accepts a ticket ID for `delivery --handoff --change` and `state assert-archivable --change` when it identifies exactly one marked change; ambiguous matches fail with candidate names.
+- Requires a fresh handoff after pushing commits beyond the recorded handoff tip.
+- Forwards piped rows to `sync-submodules --repos-from -` instead of silently synchronizing zero rows.
+
+Rerun `serpens-sdd init` with the existing configuration to update installed commands and verify the new edition. Owned retired commands are archived outside the active command directory; custom unstamped commands are preserved.

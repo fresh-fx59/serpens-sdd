@@ -155,9 +155,9 @@ for repo in $(git -C "$SERPENS_SYSTEM_STORE_ROOT" submodule --quiet foreach 'ech
 done
 ```
 
-`serpens/testing-stack.md` is what `spns-tdd`, `spns-debugging`, `spns-test-plan` and
-`spns-autotest` read instead of naming a technology; a repository without it leaves four
-commands with no stack, and since this edition `verify-docs` FAILS on its absence in an
+`serpens/testing-stack.md` is what `spns-tdd`, `spns-debugging` and `spns-test-plan` read
+instead of naming a technology; a repository without it leaves three commands with no stack, and
+since this edition `verify-docs` FAILS on its absence in an
 onboarded repository rather than passing quietly. Never overwrite one that already holds real
 content — the installer only ever writes the file when it does not yet exist.
 
@@ -405,3 +405,9 @@ Close the upgrade only when every line holds:
 - [ ] at most one commit per repository, each revertible on its own, recorded in the
       handover by SHA — and every repository that legitimately had nothing to commit
       recorded as such, with the shim check above as its evidence.
+
+## Edition 2026-10-01.1
+
+`spns-autotest` is intentionally retired. Use `spns-plan` and `spns-implement` for code-level automated tests; `spns-test-plan` remains the manual test-plan command. Rerun the staged installer with the existing configuration. Owned retired commands are archived outside the active command directory, preserving their contents; custom commands are kept.
+
+This edition also accepts ticket IDs for handoff/archive change selection, enforces a fresh handoff after pushing new work, and forwards piped submodule rows.

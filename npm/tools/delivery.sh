@@ -162,13 +162,30 @@ echo "$handoff_line4"
 # (+ticket), never by branch — a story branch is usually deleted after merge, and archive runs on
 # a fresh close-out branch that never had its own hand-off (spec §2b item 3).
 bc_load "" "$REPO"
-hoff_change_id="$CHANGE_ARG"
+hoff_change_id=""
 hoff_ticket=""
-if [ -n "$hoff_change_id" ]; then
-  hoff_ticket="$(dc_ticket_for_change "$REPO" "$hoff_change_id")" \
-    || die "no marked change $hoff_change_id" \
-      "  ↳ inspect it: cat \"$REPO/openspec/changes/$hoff_change_id/.serpens.yaml\"" \
-      "  ↳ run: <serpens-sdd> state mark-change $hoff_change_id --ticket <TICKET> first"
+if [ -n "$CHANGE_ARG" ]; then
+  # --change accepts either the change-id or the ticket id (bug fix, eval round 2, PET-7
+  # petclinic runs: agents naturally pass the ticket) — resolve it to exactly one marked change,
+  # never guess between several, never key anything by branch.
+  if dc_resolve_change_arg "$REPO" "$CHANGE_ARG"; then
+    hoff_change_id="$DC_RESOLVED_CHANGE_ID"
+    if [ "$DC_RESOLVE_FROM_TICKET" -eq 1 ]; then
+      echo "✓ --change $CHANGE_ARG is a ticket id; resolved to change $hoff_change_id" >&2
+    fi
+    hoff_ticket="$(dc_ticket_for_change "$REPO" "$hoff_change_id")" \
+      || die "no marked change $hoff_change_id" \
+        "  ↳ inspect it: cat \"$REPO/openspec/changes/$hoff_change_id/.serpens.yaml\"" \
+        "  ↳ run: <serpens-sdd> state mark-change $hoff_change_id --ticket <TICKET> first"
+  elif [ -n "$DC_RESOLVE_CANDIDATES" ]; then
+    cand_list="$(printf '%s' "$DC_RESOLVE_CANDIDATES" | tr '\n' ' ')"
+    die "--change $CHANGE_ARG matches more than one marked change: $cand_list" \
+      "  ↳ pass the exact change-id: <serpens-sdd> delivery --handoff --change <change-id>"
+  else
+    die "no marked change or ticket $CHANGE_ARG" \
+      "  ↳ inspect it: cat \"$REPO/openspec/changes/$CHANGE_ARG/.serpens.yaml\"" \
+      "  ↳ run: <serpens-sdd> state mark-change <change-id> --ticket $CHANGE_ARG first"
+  fi
 else
   if [[ "$branch" =~ $BC_BRANCH_REGEX_CAP ]]; then
     hoff_ticket="${BASH_REMATCH[1]}"

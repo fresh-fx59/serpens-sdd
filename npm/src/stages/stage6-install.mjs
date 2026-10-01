@@ -1,5 +1,5 @@
 import {
-  existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync,
+  existsSync, mkdirSync, readdirSync, readFileSync, renameSync, writeFileSync,
 } from 'node:fs';
 import { homedir } from 'node:os';
 import { basename, dirname, join, relative } from 'node:path';
@@ -51,6 +51,39 @@ export function commandDestination(port, commandDir, file) {
     return { path: join(subdir, `${name}.${port.command_format}`), subdir };
   }
   return null;
+}
+
+function archiveRetiredCommands(agentRoot, commandDir, port, current, evidence) {
+  const candidateDir = port.command_layout === 'subdir-unprefixed'
+    ? join(commandDir, port.command_prefix)
+    : commandDir;
+  if (!existsSync(candidateDir)) return;
+  const retired = readdirSync(candidateDir, { withFileTypes: true })
+    .filter((entry) => entry.isFile() && entry.name.endsWith(`.${port.command_format}`))
+    .filter((entry) => port.command_layout !== 'flat-prefixed' || entry.name.startsWith(port.command_prefix))
+    .map((entry) => port.command_layout === 'subdir-unprefixed'
+      ? join(port.command_prefix, entry.name) : entry.name)
+    .filter((file) => !current.has(file))
+    .filter((file) => {
+      const text = readFileSync(join(commandDir, file), 'utf8');
+      const frontmatter = text.match(/^---\n([\s\S]*?)\n---(?:\n|$)/)?.[1] ?? '';
+      return /^serpens-version:\s*\S+$/m.test(frontmatter);
+    });
+  if (!retired.length) return;
+  const backupRoot = join(agentRoot, '.serpens-retired-commands');
+  const stamp = new Date().toISOString().replace(/[:.]/g, '-');
+  let backup = join(backupRoot, stamp);
+  let suffix = 1;
+  while (existsSync(backup)) backup = join(backupRoot, `${stamp}-${suffix++}`);
+  mkdirSync(backup, { recursive: true });
+  for (const file of retired) {
+    const source = join(commandDir, file);
+    if (!existsSync(source)) continue;
+    const destination = join(backup, file);
+    mkdirSync(dirname(destination), { recursive: true });
+    renameSync(source, destination);
+  }
+  evidence.push(`archived retired Serpens commands under ${backup}`);
 }
 
 /**
@@ -233,6 +266,13 @@ export async function installCommands(ctx) {
   const proofDirs = [];
   for (const agentRoot of agentRoots) {
     const commandDir = join(agentRoot, port.command_dir);
+    const currentCommands = new Set();
+    for (const file of commandFiles) {
+      const dest = commandDestination(port, commandDir, file);
+      if (!dest) return fail(`unknown command_layout "${port.command_layout}" for port "${port.id}"`);
+      currentCommands.add(relative(commandDir, dest.path));
+    }
+    archiveRetiredCommands(agentRoot, commandDir, port, currentCommands, evidence);
     recordWrite(`mkdir -p ${commandDir}`, () => mkdirSync(commandDir, { recursive: true }));
     for (const file of commandFiles) {
       const raw = readFileSync(join(srcCommandDir, file), 'utf8');

@@ -17,7 +17,7 @@
 //   node scripts/release.mjs            run the full pipeline (stops before npm publish)
 //   node scripts/release.mjs --dry-run  print the ordered checklist only, run nothing
 
-import { existsSync, readFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { run } from '../src/run.mjs';
@@ -149,7 +149,7 @@ export function buildSteps({ dryRun }) {
   for (const kit of KITS) {
     steps.push({
       label: `rebuild ${kit.name} zip (${kit.zip})`,
-      exec: () => run('zip', ['-r', '-X', kit.zip, '.'], { dryRun, cwd: kit.dir }),
+      exec: () => rebuildKitArchive({ sourceDir: kit.dir, archivePath: kit.zip, dryRun }),
     });
   }
 
@@ -255,6 +255,29 @@ export function buildSteps({ dryRun }) {
   });
 
   return steps;
+}
+
+/**
+ * Rebuild a kit archive from the source tree, replacing the destination only after zip succeeds.
+ * Building beside the destination prevents zip's update mode from retaining deleted source files
+ * and keeps a known-good archive intact when the rebuild command fails.
+ *
+ * @param {{sourceDir: string, archivePath: string, dryRun?: boolean, runCommand?: Function}} opts
+ * @returns {Promise<{code: number, stdout?: string, stderr?: string, dryRun?: boolean}>}
+ */
+export async function rebuildKitArchive({ sourceDir, archivePath, dryRun = false, runCommand = run }) {
+  if (dryRun) return { code: 0, stdout: '', stderr: '', dryRun: true };
+
+  const tempDir = mkdtempSync(join(dirname(archivePath), '.serpens-zip-'));
+  const tempArchive = join(tempDir, 'kit.zip');
+  try {
+    const result = await runCommand('zip', ['-r', '-X', tempArchive, '.'], { cwd: sourceDir });
+    if (result.code !== 0) return result;
+    renameSync(tempArchive, archivePath);
+    return result;
+  } finally {
+    rmSync(tempDir, { recursive: true, force: true });
+  }
 }
 
 /**

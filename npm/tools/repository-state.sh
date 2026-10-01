@@ -301,10 +301,23 @@ if [ "$MODE" = assert-archivable ]; then
     [ -n "$ASSERT_CHANGE_ID" ] || die_state "merge-style=$DC_MERGE_STYLE is set but no --change <change-id> was given" \
       "  ↳ run: bash repository-state.sh assert-archivable --change <change-id>" \
       "  ↳ the handoff tip is recorded per change, never per branch (a story branch is usually deleted after merge)"
-    dc_ticket_for_change "$REPO" "$ASSERT_CHANGE_ID" >/dev/null \
-      || die_state "no marked change $ASSERT_CHANGE_ID" \
+    # --change accepts either the change-id or the ticket id (bug fix, eval round 2, PET-7
+    # petclinic runs: agents naturally pass the ticket) — resolve it to exactly one marked
+    # change, never guess between several, never key anything by branch.
+    if dc_resolve_change_arg "$REPO" "$ASSERT_CHANGE_ID"; then
+      if [ "$DC_RESOLVE_FROM_TICKET" -eq 1 ]; then
+        echo "✓ --change $ASSERT_CHANGE_ID is a ticket id; resolved to change $DC_RESOLVED_CHANGE_ID" >&2
+      fi
+      ASSERT_CHANGE_ID="$DC_RESOLVED_CHANGE_ID"
+    elif [ -n "$DC_RESOLVE_CANDIDATES" ]; then
+      cand_list="$(printf '%s' "$DC_RESOLVE_CANDIDATES" | tr '\n' ' ')"
+      die_state "--change $ASSERT_CHANGE_ID matches more than one marked change: $cand_list" \
+        "  ↳ pass the exact change-id: bash repository-state.sh assert-archivable --change <change-id>"
+    else
+      die_state "no marked change or ticket $ASSERT_CHANGE_ID" \
         "  ↳ inspect it: cat \"$REPO/openspec/changes/$ASSERT_CHANGE_ID/.serpens.yaml\"" \
-        "  ↳ run: bash repository-state.sh mark-change $ASSERT_CHANGE_ID --ticket <TICKET> first"
+        "  ↳ run: bash repository-state.sh mark-change <change-id> --ticket $ASSERT_CHANGE_ID first"
+    fi
     tip=$(dc_latest_handoff_tip "$REPO" "$ASSERT_CHANGE_ID")
     if [ -z "$tip" ]; then
       die_state "merge-style=$DC_MERGE_STYLE is set but no handoff tip is recorded for $ASSERT_CHANGE_ID" \
@@ -522,4 +535,39 @@ change_behind=${counts##*[[:space:]]}
 [ "$change_behind" -eq 0 ] \
   || die_state "$expected_change is behind origin by $change_behind commit(s)" \
     "  ↳ inspect it: git -C \"$REPO\" log --oneline --left-right HEAD...origin/$expected_change"
+
+# eval round 1 (serpens-vs-vanilla-openspec-2026-09-25.md): a story branch pushed MORE commits
+# after `delivery --handoff` recorded its tip, so the recorded tip went stale and a reviewer
+# following it saw an old commit. This is the CLI safety net, checked on every downstream kit
+# step (spns-plan, spns-implement, spns-review all open with `state assert-change`): once HEAD is
+# confirmed in sync with its own upstream (just above), compare it against the LATEST recorded
+# handoff tip for the change THIS TICKET owns — keyed by change-id, never by branch, same lookup
+# `delivery --handoff` itself uses. No marked change, or no tip recorded yet, means nothing to
+# compare (normal before the first hand-off) — never a failure. HEAD strictly ahead of a recorded
+# tip means new work was pushed without a re-handoff: a hard failure, matching every other
+# out-of-sync condition this command already dies on (wrong branch, missing upstream, behind
+# origin), never a warning that is easy to miss.
+# HEAD may itself be `delivery --handoff`'s own record commit (the `chore(<TICKET>): record
+# handoff …` commit touching only .serpens.yaml) — that is the tool bringing the record current,
+# never new work pushed after it. Unwrap it the same way delivery.sh's own tip computation does,
+# so recording a hand-off never immediately re-trips this check.
+head_sha="$(git -C "$REPO" rev-parse HEAD)"
+head_subject="$(git -C "$REPO" log -1 --pretty=%s "$head_sha" 2>/dev/null || true)"
+if [[ "$head_subject" == "chore(${TICKET}): record handoff "* ]]; then
+  head_changed="$(git -C "$REPO" diff --name-only "${head_sha}^" "$head_sha" 2>/dev/null)"
+  estate_basename="$(basename "$(dc_estate_path "$REPO")")"
+  if [ "$head_changed" = "$estate_basename" ]; then
+    head_sha="$(git -C "$REPO" rev-parse "${head_sha}^")"
+  fi
+fi
+if stale_change_id="$(dc_change_for_ticket "$REPO" "$TICKET")"; then
+  stale_tip="$(dc_latest_handoff_tip "$REPO" "$stale_change_id")"
+  if [ -n "$stale_tip" ] && [ "$stale_tip" != "$head_sha" ] \
+    && git -C "$REPO" cat-file -e "$stale_tip" 2>/dev/null \
+    && git -C "$REPO" merge-base --is-ancestor "$stale_tip" "$head_sha"; then
+    die_state "stale handoff tip: ${stale_tip:0:12} was the last recorded hand-off for $stale_change_id, but $expected_change has since pushed more commit(s) beyond it" \
+      "  ↳ inspect them: git -C \"$REPO\" log --oneline ${stale_tip}..$expected_change" \
+      "  ↳ fix it: <serpens-sdd> delivery --handoff --change $stale_change_id"
+  fi
+fi
 echo "✓ $expected_change is valid (ahead $change_ahead, behind 0, dirty $dirty)"

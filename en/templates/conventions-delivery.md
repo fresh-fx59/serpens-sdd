@@ -52,8 +52,11 @@ serpens-sdd delivery --handoff [--change <change-id>] [--base <branch>]
 `--handoff` records the pushed tip (T, the last WORK commit — never a hand-off record commit
 itself), then commits and pushes THAT RECORD ITSELF, as its own `chore(<TICKET>): record handoff
 <sha>` commit — the tree is never left dirty. `--change <change-id>` names which change the
-hand-off belongs to; omit it and the tool derives the ticket from the current branch name and
-finds the one marked change for it (`state mark-change`). A fix loop (a second hand-off for the
+hand-off belongs to; it also accepts the ticket id (e.g. `PET-7`) and resolves it to the one
+marked change with that ticket, printing which change was used — it fails, naming the candidates,
+if the ticket maps to zero or several marked changes. Omit `--change` entirely and the tool
+derives the ticket from the current branch name and finds the one marked change for it (`state
+mark-change`). A fix loop (a second hand-off for the
 same change, after an earlier squash/merge) appends a new record; the latest wins for the merged
 check, and earlier ones are kept for the squash re-edit fallback.
 
@@ -134,7 +137,8 @@ each, and its default.
 - **`merge-style`** — how merges land in `integration-branch`, so the archive gate can tell
   "my commits actually landed" from a stale proxy. Required once the merged check is wired — no
   silent default, because the check logic differs per value. Once set, `state assert-archivable`
-  requires `--change <change-id>`: the hand-off tip is recorded per CHANGE, never per branch — the
+  requires `--change <change-id>` (a ticket id also works — it resolves to the one marked change
+with that ticket): the hand-off tip is recorded per CHANGE, never per branch — the
   story branch that carried the hand-off is usually deleted by the time you archive, and archive
   can be run from any branch (often `integration-branch` itself). A hand-off recorded during
   `spns-implement`/`spns-spec` (the change still marked, `openspec/changes/<change-id>/` still
@@ -176,7 +180,8 @@ Archive's precondition is always verified by `serpens-sdd state assert-archivabl
 <change-id>`, never by reading the forge UI, the tracker, or a PR link. Non-zero exit = not
 merged. Who opened the PR/MR does not change the check — it reads git only. Always pass
 `--change`: the merge-style-keyed check reads the hand-off tip recorded for that CHANGE, not for
-whatever branch you happen to be standing on.
+whatever branch you happen to be standing on. `--change` also accepts the ticket id and resolves
+it to the one marked change with that ticket.
 
 **A refusal is always correct — never route around it.** With `merge-style=merge`/`rebase`, the
 check also verifies the recorded tip's hand-off record carries a `Serpens-Handoff-Tip:` commit

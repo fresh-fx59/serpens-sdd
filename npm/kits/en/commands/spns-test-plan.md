@@ -1,6 +1,6 @@
 ---
 description: Turn an approved delta spec's scenarios into a black-box integration test plan QA can run on the dev stand (tester flow)
-serpens-version: 2026-09-25.1
+serpens-version: 2026-10-01.1
 ---
 Build the black-box integration test plan for change {{args}}.
 
@@ -8,7 +8,9 @@ AUDIENCE — read this before writing anything. The testers only see the applica
 on the dev stand. They do not read the code and they do not test methods. Every item you
 produce must be something they can send, produce, query or observe from OUTSIDE the running
 system. Payloads and queries must be copy-paste ready, not described in prose. A check that
-needs internal calls or private state belongs in `spns-autotest`, not here.
+needs internal calls or private state belongs in the repository's own code-level tests (the
+tasks `spns-plan` writes and `spns-implement` executes against `serpens/testing-stack.md`), not
+here.
 
 WHAT THE TESTERS CAN ACTUALLY DO is a fact about THIS repository, not about this command. Read ONLY
 the `Manual testing access` section of `serpens/testing-stack.md` — exactly

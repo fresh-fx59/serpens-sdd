@@ -86,7 +86,7 @@ test('docs/UPGRADE.md no longer carries the retired rename-boundary section '
 test('every shipped command file and skill directory carries the spns- prefix', () => {
   for (const kit of KITS) {
     const commands = readdirSync(join(kit, 'commands')).sort();
-    assert.equal(commands.length, 7, `${kit}: expected 7 commands, got ${commands.join(', ')}`);
+    assert.equal(commands.length, 6, `${kit}: expected 6 commands, got ${commands.join(', ')}`);
     for (const c of commands) assert.match(c, /^spns-[a-z-]+\.md$/, `${kit}/commands/${c}`);
     const skills = readdirSync(join(kit, 'skills')).sort();
     assert.equal(skills.length, 6, `${kit}: expected 6 skills, got ${skills.join(', ')}`);

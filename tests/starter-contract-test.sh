@@ -228,14 +228,14 @@ else
 fi
 
 printf 'T7c every writing command commits its own work, by path\n'
-for f in spns-spec spns-plan spns-implement spns-autotest spns-archive; do
+for f in spns-spec spns-plan spns-implement spns-archive; do
   if rg -qi 'commit|коммит' "$KIT/commands/$f.md"; then
     pass "$f commits what it writes"
   else
     fail "$f leaves its work uncommitted for the operator"
   fi
 done
-for f in spns-spec spns-plan spns-implement spns-autotest; do
+for f in spns-spec spns-plan spns-implement; do
   if rg -q -- 'git add -A' "$KIT/commands/$f.md" | rg -qv 'Never|никогда'; then
     fail "$f tells the agent to stage everything (local-only files would be committed)"
   else

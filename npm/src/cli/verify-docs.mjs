@@ -229,9 +229,9 @@ export async function runVerifyDocs({
   // `serpens/testing-stack.md` is spoke-only (docs/SETUP.md §5 step 6a copies it into each
   // onboarded repository's own docs/, never into the store). Its absence USED to be
   // "unaffected" everywhere, which was the same evidence-deletion loophole port-facts.md had
-  // already closed: `spns-test-plan` and `spns-autotest` now read this file for every fact
+  // already closed: `spns-test-plan` now reads this file for every fact
   // about the customer's stack, so a spoke without it does not have "no opinion on testing" —
-  // it has two commands with nothing to read. Absence is therefore an error in a repository the
+  // it has a command with nothing to read. Absence is therefore an error in a repository the
   // kit was ONBOARDED into, found by a data signal rather than by a caller flag — a gate you
   // have to remember to ask for is a gate that gets forgotten.
   //
@@ -290,7 +290,7 @@ export async function runVerifyDocs({
     if (isOnboardedRepo && !onboarding) {
       ok = false;
       const message = `✗ ${testingStackPath}: missing — this is an onboarded repository `
-        + `(${onboardSignal} is here) and spns-test-plan, spns-autotest, spns-tdd and `
+        + `(${onboardSignal} is here) and spns-test-plan, spns-tdd and `
         + 'spns-debugging all read this file for every fact about your stack. Run '
         + '`serpens-sdd init --only 6` to write it from the kit template, then fill it in.';
       evidence.push(message);

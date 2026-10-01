@@ -583,3 +583,161 @@ test('assert-archivable --change: a hand-edited handoff-tip line (no Serpens-Han
   assert.match(stateResult.stderr, /no matching `delivery --handoff`-produced record commit/);
   assert.match(stateResult.stderr, /never hand-edit \.serpens\.yaml/);
 });
+
+// eval round 2, PET-7 petclinic runs: agents naturally pass the TICKET id to --change, not the
+// openspec change-id. `--change <ticket>` must resolve to the one marked change with that
+// ticket and proceed — never reject a value the agent had every reason to think was correct.
+test('delivery --handoff --change <ticket>: resolves to the one marked change and proceeds', async () => {
+  const origin = mkdtempSync(join(tmpdir(), 'serpens-sdd-delivery-origin-'));
+  execFileSync('git', ['init', '--quiet', '--bare', '-b', 'develop'], { cwd: origin });
+  const repo = makeRepo();
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/PET-7']);
+  markChange(repo, 'add-appointment-endpoint', 'PET-7', 'feature/PET-7');
+  writeFileSync(join(repo, 'x.txt'), 'x\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'x.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(PET-7): work']);
+  execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/PET-7']);
+
+  const result = await delivery(['--handoff', '--change', 'PET-7'], repo);
+  assert.equal(result.code, 0, result.stderr);
+  assert.match(result.stderr, /resolved to change add-appointment-endpoint/);
+
+  const estate = readFileSync(join(repo, '.serpens.yaml'), 'utf8');
+  assert.match(estate, /handoff-tip: add-appointment-endpoint PET-7 /);
+});
+
+test('delivery --handoff --change <arg>: zero or several matching changes fails with an accurate hint (never keyed by branch)', async () => {
+  const origin = mkdtempSync(join(tmpdir(), 'serpens-sdd-delivery-origin-'));
+  execFileSync('git', ['init', '--quiet', '--bare', '-b', 'develop'], { cwd: origin });
+  const repo = makeRepo();
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/PET-999']);
+  writeFileSync(join(repo, 'x.txt'), 'x\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'x.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(PET-999): work']);
+  execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/PET-999']);
+
+  // Zero matches: nothing marked at all.
+  let result = await delivery(['--handoff', '--change', 'PET-999'], repo);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /no marked change or ticket PET-999/);
+  assert.match(result.stderr, /state mark-change <change-id> --ticket PET-999/);
+
+  // Several matches: two changes both marked with the same ticket.
+  markChange(repo, 'add-endpoint-a', 'PET-8', 'feature/PET-8-a');
+  markChange(repo, 'add-endpoint-b', 'PET-8', 'feature/PET-8-b');
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/PET-8']);
+  writeFileSync(join(repo, 'y.txt'), 'y\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'y.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(PET-8): work']);
+  execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/PET-8']);
+  result = await delivery(['--handoff', '--change', 'PET-8'], repo);
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /matches more than one marked change/);
+  assert.match(result.stderr, /add-endpoint-a/);
+  assert.match(result.stderr, /add-endpoint-b/);
+  assert.match(result.stderr, /delivery --handoff --change <change-id>/);
+});
+
+test('assert-archivable --change <ticket>: resolves to the one marked change and checks it', async () => {
+  const origin = mkdtempSync(join(tmpdir(), 'serpens-sdd-delivery-origin-'));
+  execFileSync('git', ['init', '--quiet', '--bare', '-b', 'develop'], { cwd: origin });
+  const repo = makeRepo();
+  writeDelivery(repo, [
+    '<!-- serpens:section delivery-contract -->',
+    '| `merge-style` | merge |',
+    '',
+  ].join('\n'));
+  execFileSync('git', ['-C', repo, 'add', 'serpens/delivery.md']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'chore: delivery contract']);
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/FRG-3']);
+  markChange(repo, 'frg-3', 'FRG-3', 'feature/FRG-3');
+  writeFileSync(join(repo, 'x.txt'), 'x\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'x.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(FRG-3): work']);
+  execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/FRG-3']);
+
+  let result = await delivery(['--handoff', '--change', 'frg-3'], repo);
+  assert.equal(result.code, 0, result.stderr);
+
+  execFileSync('git', ['-C', repo, 'checkout', '-q', 'develop']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'merge', '-q', '--no-ff', '-m', 'merge FRG-3', 'feature/FRG-3']);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'develop']);
+
+  const { cmd, args } = resolveTool('state', ['assert-archivable', '--change', 'FRG-3', '--repo', repo]);
+  const stateResult = await run(cmd, args, { cwd: repo });
+  assert.equal(stateResult.code, 0, stateResult.stderr);
+  assert.match(stateResult.stdout, /merge-style=merge/);
+  assert.match(stateResult.stderr, /resolved to change frg-3/);
+});
+
+// ---- eval round 1 (serpens-vs-vanilla-openspec-2026-09-25.md): a story branch pushed MORE
+// commits after `delivery --handoff` recorded its tip, so the recorded tip went stale and a
+// reviewer following it saw an old commit. `state assert-change` runs at the top of every
+// downstream kit step (spns-plan, spns-implement, spns-review) — the CLI safety net lives there:
+// once the branch is confirmed in sync with its own upstream, compare HEAD against the LATEST
+// recorded handoff tip for the change this ticket owns (never by branch — same lookup
+// `delivery --handoff` itself uses). HEAD strictly ahead of that tip means new work was pushed
+// without a re-handoff: this is a hard failure (assert-change already dies on every other
+// out-of-sync condition it finds — wrong branch, missing upstream, behind origin — so a stale
+// handoff record joins that same enforcement style, not a warning that is easy to miss), naming
+// the exact fix command.
+test('assert-change fails when HEAD is ahead of the recorded handoff tip for this ticket\'s change, naming the fix', async () => {
+  const origin = mkdtempSync(join(tmpdir(), 'serpens-sdd-delivery-origin-'));
+  execFileSync('git', ['init', '--quiet', '--bare', '-b', 'develop'], { cwd: origin });
+  const repo = makeRepo();
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/STL-1']);
+  markChange(repo, 'stale-1', 'STL-1', 'feature/STL-1');
+  writeFileSync(join(repo, 'x.txt'), 'x\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'x.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(STL-1): one']);
+  execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/STL-1']);
+
+  let result = await delivery(['--handoff', '--change', 'stale-1'], repo);
+  assert.equal(result.code, 0, result.stderr);
+
+  // More work pushed AFTER the hand-off, without a re-handoff — the exact bug from eval round 1.
+  writeFileSync(join(repo, 'y.txt'), 'y\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'y.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(STL-1): two']);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'feature/STL-1']);
+
+  const { cmd, args } = resolveTool('state', ['assert-change', 'STL-1', '--repo', repo]);
+  const stateResult = await run(cmd, args, { cwd: repo });
+  assert.equal(stateResult.code, 1);
+  assert.match(stateResult.stderr, /handoff tip .* is stale|stale handoff tip/i);
+  assert.match(stateResult.stderr, /delivery --handoff --change stale-1/);
+
+  // Re-handoff records the new tip; assert-change now passes.
+  result = await delivery(['--handoff', '--change', 'stale-1'], repo);
+  assert.equal(result.code, 0, result.stderr);
+
+  const { cmd: cmd2, args: args2 } = resolveTool('state', ['assert-change', 'STL-1', '--repo', repo]);
+  const stateResult2 = await run(cmd2, args2, { cwd: repo });
+  assert.equal(stateResult2.code, 0, stateResult2.stderr);
+});
+
+test('assert-change passes when no handoff has ever been recorded for this ticket\'s change (nothing to compare)', async () => {
+  const origin = mkdtempSync(join(tmpdir(), 'serpens-sdd-delivery-origin-'));
+  execFileSync('git', ['init', '--quiet', '--bare', '-b', 'develop'], { cwd: origin });
+  const repo = makeRepo();
+  execFileSync('git', ['-C', repo, 'remote', 'add', 'origin', origin]);
+  execFileSync('git', ['-C', repo, 'push', '-q', 'origin', 'main:develop']);
+  execFileSync('git', ['-C', repo, 'checkout', '-q', '-b', 'feature/STL-2']);
+  markChange(repo, 'stale-2', 'STL-2', 'feature/STL-2');
+  writeFileSync(join(repo, 'x.txt'), 'x\n', 'utf8');
+  execFileSync('git', ['-C', repo, 'add', 'x.txt']);
+  execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', '-C', repo, 'commit', '-q', '-m', 'feat(STL-2): one']);
+  execFileSync('git', ['-C', repo, 'push', '-q', '-u', 'origin', 'feature/STL-2']);
+
+  const { cmd, args } = resolveTool('state', ['assert-change', 'STL-2', '--repo', repo]);
+  const stateResult = await run(cmd, args, { cwd: repo });
+  assert.equal(stateResult.code, 0, stateResult.stderr);
+});

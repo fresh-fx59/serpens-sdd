@@ -86,7 +86,7 @@ of those is a fact about YOUR repository, and they all live in one place —
 - the boundaries only the slow tier catches, and the debugging boundary order
   (`spns-debugging`);
 - **Manual testing access** — twelve slots naming what a tester can send, produce, query and
-  observe from outside (`spns-test-plan`, `spns-autotest`).
+  observe from outside (`spns-test-plan`).
 
 `serpens-sdd verify-docs` schema-validates that file: every required section present, every
 slot answered. `none` is a complete answer where a slot offers one — "this repository has no

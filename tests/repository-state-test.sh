@@ -656,8 +656,8 @@ echo "T33b merge-style set, no marked change for the given --change id fails nam
 restore_repo
 write_delivery_merge_style merge
 out=$(run_state assert-archivable --change ghost-1); rc=$?
-if [ "$rc" -eq 1 ] && grep -q "no marked change ghost-1" <<<"$out" \
-  && grep -q "mark-change ghost-1 --ticket" <<<"$out"; then
+if [ "$rc" -eq 1 ] && grep -q "no marked change or ticket ghost-1" <<<"$out" \
+  && grep -q "mark-change <change-id> --ticket ghost-1" <<<"$out"; then
   ok "unmarked --change id refused, naming the fix"
 else
   no "unmarked --change id was not refused as expected (rc=$rc)" "$out"

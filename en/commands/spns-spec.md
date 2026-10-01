@@ -1,6 +1,6 @@
 ---
 description: Draft the delta spec(s) for a story via interview; fan out across repos when needed (analyst flow)
-serpens-version: 2026-09-25.1
+serpens-version: 2026-10-01.1
 ---
 You are drafting the spec for story {{args}}.
 `<change-id>` is the OpenSpec change folder name; `<openspec>` is the OpenSpec CLI invocation setup
@@ -29,8 +29,8 @@ ONE repository (the usual case): steps 0-3 are the whole command — stop readin
      gate below that tells you to STOP does.
    Every scenario must name what a tester SENDS and what they OBSERVE from outside the running system
    — a request, an event, a row, a status code. A requirement checkable only from inside is either
-   reworded into an observable one now, while it is a sentence, or handed to `spns-autotest` and said
-   so out loud. This is the cheapest moment in the whole flow to find it.
+   reworded into an observable one now, while it is a sentence. This is the cheapest moment in
+   the whole flow to find it.
    Interview ONCE at story level even if several repos are involved: the requirements are shared,
    so interviewing per repo asks the same questions N times and invites N different answers.
 

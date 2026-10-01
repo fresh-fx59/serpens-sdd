@@ -63,11 +63,13 @@ predates versioning or is your own; `MODIFIED` means it carries a stamp but not 
 4. `spns-review`: inspect state, then run `<openspec> validate <change-id> --type change --strict
    --json` and `<openspec> status --change <change-id> --json` before human review. There is no
    `verify` subcommand in the supported OpenSpec 1.11–1.13 window.
-5. `spns-test-plan` and `spns-autotest`: derive checks from approved scenarios.
-   `spns-test-plan` is **black-box**: the request or event to send, the expected response, and
-   the expected stored rows on the dev stand — posted per `test-plan-posted-to` (from
-   `<serpens-sdd> delivery --print-contract`), `same-ticket-comment` by default, never a separate
-   test task. `spns-autotest` is the in-code layer.
+5. `spns-test-plan`: derive checks from approved scenarios. It is **black-box**: the request or
+   event to send, the expected response, and the expected stored rows on the dev stand — posted
+   per `test-plan-posted-to` (from `<serpens-sdd> delivery --print-contract`),
+   `same-ticket-comment` by default, never a separate test task. The in-code layer is not a
+   separate command: `spns-plan` writes one task per scenario that writes or updates its test
+   (or, in a repository with no automated tests, states how completion is verified), and
+   `spns-implement` executes those tasks.
 6. Once `archive-when` (from `<serpens-sdd> delivery --print-contract`) is satisfied — QA's
    sign-off on the dev stand by default (`after-qa-accepted`), or merge into the integration
    branch when set to `after-merge` — `spns-archive`: place the archive commit, then run
@@ -78,9 +80,10 @@ predates versioning or is your own; `MODIFIED` means it carries a stamp but not 
    the configured shape and nothing else, so a suffixed branch fails the pre-push guard. `--branch <name>` names that branch; `--here` archives on the current
    branch.
    Every mode is gated by `assert-archivable --change <change-id>`, which requires a clean tree
-   and a HEAD that already contains the configured base — always pass `--change`: with
-   `merge-style` configured, the hand-off tip it checks is recorded per CHANGE, never per branch
-   (a story branch is usually gone by the time you archive).
+   and a HEAD that already contains the configured base — always pass `--change` (a ticket id
+   also works and resolves to the one marked change with that ticket): with `merge-style`
+   configured, the hand-off tip it checks is recorded per CHANGE, never per branch (a story
+   branch is usually gone by the time you archive).
 
 The exact generated OpenSpec invocations live in `serpens/port-facts.md` and the installed
 commands. Re-probe them after every port or OpenSpec upgrade.

@@ -1,6 +1,6 @@
 ---
 description: Generate design + tasks for an approved change, against TODAY's code (dev flow)
-serpens-version: 2026-09-25.1
+serpens-version: 2026-10-01.1
 ---
 Plan change {{args}}. Follow skills spns-drill-down (all system facts) and spns-verification.
 `{{args}}` is the `<change-id>`; `<openspec>` is the OpenSpec CLI invocation setup resolved.
@@ -53,5 +53,8 @@ CLI cannot tell you this, so check the story. If the proposal is not approved, S
    is untracked until you add it — adding it is part of writing it. Commit with
    `docs(<TICKET>): <text>` (`<serpens-sdd> git-naming` enforces the type and the form —
    `--print-contract` prints both), push to the story branch, and paste `git log --oneline -1` plus
-   `git status --short` as evidence.
+   `git status --short` as evidence. Last: after this (or any) push of the story branch, run
+   `<serpens-sdd> delivery --handoff --change <change-id>` again — a hand-off already recorded
+   goes stale the moment a new commit is pushed past it, and this is the last delivery step, not
+   an optional one.
 6. Present the plan to the developer for approval. Do not start implementing.

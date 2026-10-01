@@ -516,7 +516,7 @@ for (const p of mdFiles.filter(p => /(^|\/)openspec\/changes\/[^/]+\/specs\/.+\.
            'openspec treats the SHALL/MUST keyword as guidance unless --strict, but the normative verb belongs in the requirement text');
     if ((op === 'ADDED' || op === 'MODIFIED') && scenarios > 0 && !OBSERVABLE.test(reqAll))
       warn(r, `requirement "${reqName}" (line ${reqLine}) names no observable surface`,
-           'a black-box tester must be able to send and observe it: name the endpoint, topic, table, status code or query in a scenario — a requirement only checkable from inside belongs to spns-autotest, not spns-test-plan');
+           'a black-box tester must be able to send and observe it: name the endpoint, topic, table, status code or query in a scenario — a requirement only checkable from inside belongs in the repository\'s own code-level tests, not spns-test-plan');
     reqName = null;
   };
 

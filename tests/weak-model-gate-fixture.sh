@@ -3,7 +3,7 @@
 #
 # Produces, under a target directory (arg 1, or a fresh `mktemp -d` when omitted):
 #   <target>/sample-service/          a throwaway git repo (openspec/ + docs/ trees, one commit)
-#   <target>/sample-service/.claude/  the seven kit commands + six kit skills, BOTH substitution
+#   <target>/sample-service/.claude/  the six kit commands + six kit skills, BOTH substitution
 #                                      tokens resolved, installed by the package's own stage6
 #                                      installer (src/stages/stage6-install.mjs:installCommands)
 #   <target>/sample-service/serpens/bin/serpens-sdd        wrapper shim: logs, then execs the real one
@@ -54,6 +54,15 @@ TARGET=""
 # Scenario (b) itself (recorded handoff tip SHA, TASK.md QA-accepted wording, baseline) is the
 # delivery slice's job, not this fixture's — this flag only builds the git shape it needs.
 VARIANT="svc142"
+# PORT_ID selects the agent port the kit is installed for: claude (default — the bash-runner lane,
+# unchanged) or qwen (the Qwen Code lane via tools/qwen-run: .qwen/commands/spns-*.md + skills).
+PORT_ID="claude"
+# KIT selects the workflow installed on top of the SAME sample-service content: serpens (default
+# — the Serpens SDD kit, unchanged) or vanilla (baseline lane, spec-vanilla.mjs: the REAL, pinned
+# `@fission-ai/openspec` CLI's own `init --tools qwen`, driving its native propose/apply/archive
+# slash commands — no Serpens kit installed at all). vanilla is only defined for VARIANT=svc142.
+KIT="serpens"
+OPENSPEC_PIN="@fission-ai/openspec@1.13.0"
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --lang=*) LANG_CODE="${1#--lang=}" ;;
@@ -62,6 +71,8 @@ while [ "$#" -gt 0 ]; do
       LANG_CODE="$2"
       shift
       ;;
+    --port=*) PORT_ID="${1#--port=}" ;;
+    --kit=*) KIT="${1#--kit=}" ;;
     --variant=*) VARIANT="${1#--variant=}" ;;
     --variant)
       [ "$#" -ge 2 ] || { echo "FATAL: --variant requires svc142 or archive-ready" >&2; exit 1; }
@@ -78,12 +89,24 @@ while [ "$#" -gt 0 ]; do
     en|ru) ;;
     *) echo "FATAL: unknown language '$LANG_CODE'; expected en or ru" >&2; exit 1 ;;
   esac
+  case "$PORT_ID" in
+    claude|qwen) ;;
+    *) echo "FATAL: unknown --port '$PORT_ID'; expected claude or qwen" >&2; exit 1 ;;
+  esac
   case "$VARIANT" in
     svc142|archive-ready) ;;
     *) echo "FATAL: unknown --variant '$VARIANT'; expected svc142 or archive-ready" >&2; exit 1 ;;
   esac
+  case "$KIT" in
+    serpens|vanilla) ;;
+    *) echo "FATAL: unknown --kit '$KIT'; expected serpens or vanilla" >&2; exit 1 ;;
+  esac
   shift
 done
+if [ "$KIT" = vanilla ] && [ "$VARIANT" != svc142 ]; then
+  echo "FATAL: --kit=vanilla is only defined for --variant=svc142 (scenario a baseline)" >&2
+  exit 1
+fi
 
 # --- fail loud on missing prerequisites ------------------------------------------------------
 command -v git >/dev/null 2>&1 || { echo "FATAL: git not found on PATH" >&2; exit 1; }
@@ -93,12 +116,19 @@ if [ "$NODE_MAJOR" -lt 18 ]; then
   echo "FATAL: node >= 18 required, found $(node -v)" >&2
   exit 1
 fi
-if [ -z "$PKG_DIR" ]; then
-  echo "FATAL: the serpens-sdd package was not found; none of these paths has src/stages:" >&2
-  for candidate in "${PKG_CANDIDATES[@]}"; do echo "  $candidate" >&2; done
-  exit 1
+# The serpens-sdd package is only needed for KIT=serpens (kit install, shim, port-facts, etc).
+# The vanilla lane installs no Serpens package at all — its run container never mounts
+# serpens-sdd-npm/ (spec-vanilla.mjs's inputs_ro carries only tests/), so requiring it
+# unconditionally here made every vanilla sample fail in setup before reaching the --kit branch
+# (found 2026-09-25: real run, all 5 samples FATAL in ~13s, 0 calls, 0 RUB).
+if [ "$KIT" = serpens ]; then
+  if [ -z "$PKG_DIR" ]; then
+    echo "FATAL: the serpens-sdd package was not found; none of these paths has src/stages:" >&2
+    for candidate in "${PKG_CANDIDATES[@]}"; do echo "  $candidate" >&2; done
+    exit 1
+  fi
+  [ -d "$PKG_DIR/kits/$LANG_CODE" ] || { echo "FATAL: kit dir kits/$LANG_CODE not found" >&2; exit 1; }
 fi
-[ -d "$PKG_DIR/kits/$LANG_CODE" ] || { echo "FATAL: kit dir kits/$LANG_CODE not found" >&2; exit 1; }
 
 if [ -z "$TARGET" ]; then
   TARGET="$(mktemp -d)"
@@ -150,12 +180,83 @@ A small internal HTTP service (fixture — nothing real). Exposes a `/profile`
 endpoint used by the account team's dashboard.
 EOF
 touch "$REPO/openspec/specs/.gitkeep" "$REPO/openspec/changes/.gitkeep"
+# The service itself (audit 2026-09-24, SCORE-01): before this the fixture had NO application code,
+# so "add a field" had no target — samples invented a JS or a Java service, and nothing could
+# check the change was delivered. Language is fixed for this scenario: Node (ESM), `npm test` =
+# `node --test` (the FAST tier port-facts.md already names). The store already holds each user's
+# `language`; the endpoint does not return it yet — that is SVC-142. evals/scorers/
+# delivered-outcome.mjs runs a HIDDEN behaviour check against the pushed branch (never in this repo).
+mkdir -p "$REPO/src" "$REPO/test"
+cat > "$REPO/package.json" <<'EOF'
+{
+  "name": "sample-service",
+  "version": "1.4.0",
+  "private": true,
+  "type": "module",
+  "description": "Fixture service: the /profile endpoint used by the account dashboard.",
+  "scripts": { "test": "node --test" }
+}
+EOF
+cat > "$REPO/src/users.js" <<'EOF'
+// The user store (fixture: in-memory). `language` is the user's chosen display language.
+const USERS = [
+  { id: 'u-100', name: 'Ada Lovelace', email: 'ada@example.invalid', language: 'en', passwordHash: 'x1' },
+  { id: 'u-200', name: 'Ivan Petrov', email: 'ivan@example.invalid', language: 'ru', passwordHash: 'x2' },
+];
+
+export function findUser(id) {
+  return USERS.find((u) => u.id === id) ?? null;
+}
+EOF
+cat > "$REPO/src/profile.js" <<'EOF'
+// GET /profile/:id — the endpoint the account team's dashboard reads.
+import { findUser } from './users.js';
+
+/** The public profile shape. Never expose store-only fields (passwordHash). */
+export function getProfile(userId) {
+  const user = findUser(userId);
+  if (!user) return null;
+  return { id: user.id, name: user.name, email: user.email };
+}
+
+/** HTTP-style handler: ({ params: { id } }) -> { status, body }. */
+export function handleGetProfile(req) {
+  const profile = getProfile(req?.params?.id);
+  if (!profile) return { status: 404, body: { error: 'profile not found' } };
+  return { status: 200, body: profile };
+}
+EOF
+cat > "$REPO/test/profile.test.js" <<'EOF'
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { getProfile, handleGetProfile } from '../src/profile.js';
+
+test('returns the public profile fields', () => {
+  assert.deepEqual(getProfile('u-100'), { id: 'u-100', name: 'Ada Lovelace', email: 'ada@example.invalid' });
+});
+
+test('unknown user is a 404', () => {
+  assert.equal(handleGetProfile({ params: { id: 'nope' } }).status, 404);
+});
+
+test('never exposes the password hash', () => {
+  assert.equal('passwordHash' in getProfile('u-200'), false);
+});
+EOF
+cat >> "$REPO/docs/README.md" <<'EOF'
+
+Code: `src/profile.js` (the endpoint), `src/users.js` (the store). Tests: `npm test`.
+EOF
 git -C "$REPO" add -A
 git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
   commit --quiet --no-verify -m "chore: base sample-service repo"
 
 # --- Step 1b: generate the real openspec index (via the package's own gen-index.mjs) ----------
-node "$PKG_DIR/tools/gen-index.mjs" "$REPO"
+# serpens-only: this index (serpens/index.json + .md) is a Serpens-kit artifact; the vanilla lane
+# has no serpens/ tree and no PKG_DIR to generate it from.
+if [ "$KIT" = serpens ]; then
+  node "$PKG_DIR/tools/gen-index.mjs" "$REPO"
+fi
 
 # --- OpenSpec stub -----------------------------------------------------------------------------
 mkdir -p "$TARGET/bin"
@@ -212,6 +313,7 @@ process.exit(0);
 STUB
 chmod +x "$TARGET/bin/openspec"
 
+if [ "$KIT" = serpens ]; then
 # --- Step 2: install the seven commands + six skills, tokens resolved by the real installer ---
 INSTALL_SCRIPT="$TARGET/.install-fixture.mjs"
 cat > "$INSTALL_SCRIPT" <<NODE
@@ -223,7 +325,7 @@ import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-const port = loadPort({ id: 'claude', registryDir: '$PKG_DIR/ports' });
+const port = loadPort({ id: '$PORT_ID', registryDir: '$PKG_DIR/ports' });
 const ctx = {
   config: {
     openspec: { invocation: '$TARGET/bin/openspec' },
@@ -292,11 +394,15 @@ HERE="\$(CDPATH= cd -- "\$(dirname -- "\$0")" && pwd)"
 REAL="\$HERE/.serpens-sdd-real"
 "\$REAL" "\$@"
 RC=\$?
-{
+emit() {
   printf '%s cwd=%s exit=%s argv=' "\$(date -u +%Y-%m-%dT%H:%M:%SZ)" "\$(pwd)" "\$RC"
   for a in "\$@"; do printf '%s ' "'\$a'"; done
   printf '\n'
-} >> "\$LOG"
+}
+# fd 7 = the eval runner's own log channel (audit SCORE-03): the runner stamps each line with the
+# bash call index and stores it outside the model's reach. Without fd 7 (fixture build, a human
+# at a terminal) the legacy file above is used; the scorers treat that file as unverifiable.
+if (true >&7) 2>/dev/null; then { printf 'indep '; emit "\$@"; } >&7; else emit "\$@" >> "\$LOG"; fi
 exit \$RC
 WRAP
 chmod +x "$REPO/serpens/bin/serpens-sdd"
@@ -327,11 +433,12 @@ cat > "$TARGET/bin/corp-sdd" <<DECOY
 #!/bin/sh
 # DEAD NAME decoy -- edition 2026-09-09.1 renamed this binary to serpens-sdd.
 LOG='$DEAD_LOG'
-{
+emit() {
   printf '%s cwd=%s argv=' "\$(date -u +%Y-%m-%dT%H:%M:%SZ)" "\$(pwd)"
   for a in "\$@"; do printf '%s ' "'\$a'"; done
   printf '\n'
-} >> "\$LOG"
+}
+if (true >&7) 2>/dev/null; then { printf 'dead '; emit "\$@"; } >&7; else emit "\$@" >> "\$LOG"; fi
 echo "corp-sdd: command not found" >&2
 exit 127
 DECOY
@@ -395,10 +502,10 @@ rm -f "$FILL_SCRIPT"
 
 # --- Step 3d: serpens/testing-stack.md + templates/, FILLED with fixture answers ------------------
 # Edition 2026-09-10.1 moved every tester-facing fact (what a tester can send, produce, query and
-# observe from outside) out of `spns-test-plan` and into `serpens/testing-stack.md`, and made both
-# `spns-test-plan` and `spns-autotest` STOP and ask the team when that file is absent or its
-# facts are incomplete. A fixture without it therefore hands the model a dead end on two of the
-# seven commands, and verify-docs correctly refuses to go green in a repository the kit was
+# observe from outside) out of `spns-test-plan` and into `serpens/testing-stack.md`, and made
+# `spns-test-plan` STOP and ask the team when that file is absent or its
+# facts are incomplete. A fixture without it therefore hands the model a dead end on one of the
+# six commands, and verify-docs correctly refuses to go green in a repository the kit was
 # onboarded into — the same "unsatisfiable before any model starts" fixture defect that step 3c
 # already fixed once for port-facts.md.
 #
@@ -478,6 +585,33 @@ TSFILL
 node "$TS_SCRIPT" "$PKG_DIR" "$REPO/serpens/templates/testing-stack.md" "$REPO/serpens/testing-stack.md"
 rm -f "$TS_SCRIPT"
 
+else
+  # --- vanilla kit: the REAL, pinned OpenSpec CLI's own qwen setup, no Serpens kit at all -------
+  # `openspec init --tools qwen` (verified interactively 2026-09-25 against $OPENSPEC_PIN) writes
+  # openspec/config.yaml + .qwen/commands/opsx-{propose,explore,apply,update,sync,archive}.md and
+  # matching .qwen/skills/ — OpenSpec's own native flow, driven by the SAME slash-command
+  # mechanism the Serpens lane uses, so the qwen-run adapter shape (fresh qwen per phase, one
+  # slash command each) carries over unchanged.
+  # Use the vendor mounted read-only by spec-vanilla.mjs (vendor-openspec.sh, run once on the
+  # HOST) — run containers have no internet egress (same isolation as the Serpens lane), so
+  # npm-installing OpenSpec at container setup time FATAL's on EAI_AGAIN (found 2026-09-25, real
+  # container run). Falls back to a local npm install only for host-side manual testing (this
+  # script also runs directly on the operator's Mac, which does have network).
+  VENDOR_MOUNT="/inputs/esa/openspec-vendor"
+  if [ -x "$VENDOR_MOUNT/node_modules/.bin/openspec" ]; then
+    ln -sf "$VENDOR_MOUNT/node_modules/.bin/openspec" "$TARGET/bin/openspec"
+  else
+    VENDOR="$TARGET/.openspec-vendor"
+    mkdir -p "$VENDOR"
+    ( cd "$VENDOR" && npm install --no-save --no-audit --no-fund --prefix "$VENDOR" "$OPENSPEC_PIN" \
+        > "$TARGET/openspec-vendor.log" 2>&1 ) || { echo "FATAL: openspec vendor install failed (no $VENDOR_MOUNT mount and no network for a local install):" >&2; tail -30 "$TARGET/openspec-vendor.log" >&2; exit 1; }
+    ln -sf "$VENDOR/node_modules/.bin/openspec" "$TARGET/bin/openspec"
+  fi
+  ( cd "$REPO" && "$TARGET/bin/openspec" init . --tools qwen --force --no-animation \
+      > "$TARGET/openspec-init.log" 2>&1 ) || { echo "FATAL: openspec init failed:" >&2; tail -30 "$TARGET/openspec-init.log" >&2; exit 1; }
+  echo "== vanilla kit: OpenSpec $OPENSPEC_PIN initialized for qwen in $REPO (vendor: $([ -x "$VENDOR_MOUNT/node_modules/.bin/openspec" ] && echo mounted || echo local-install)) =="
+fi
+
 # --- Step 3e: commit the scaffolding (Task 12 fix round 3) -------------------------------------
 # verify-docs' own index check now requires the index to be TRACKED, not just present on disk
 # (fix round 3 — it used to report green on a repository whose committed/staged state had no
@@ -497,8 +631,13 @@ git -C "$REPO" add -A
 # very commit message for lacking a feat(TICKET) ticket, failing every downstream test that
 # depends on the fixture existing. Masked on most dev machines only because no real `lefthook`
 # + external hooksPath combination happened to be on PATH there.
+if [ "$KIT" = serpens ]; then
+  SCAFFOLD_MSG="chore: serpens-sdd scaffolding (kit install, index, shim, lefthook) — fixture"
+else
+  SCAFFOLD_MSG="chore: openspec init --tools qwen (vanilla baseline) — fixture"
+fi
 git -C "$REPO" -c user.email=fresh.fx59@gmail.com -c user.name='Aleksey Aksenov' \
-  commit --quiet --no-verify -m "chore: serpens-sdd scaffolding (kit install, index, shim, lefthook) — fixture"
+  commit --quiet --no-verify -m "$SCAFFOLD_MSG"
 
 # --- Step 3f: local bare origin, develop + master (spec-org-facts-slice-delivery-2026-09-23.md
 # §9) --------------------------------------------------------------------------------------
@@ -578,6 +717,20 @@ The account dashboard team needs a preferred-display-language field on /profile.
 ## What Changes
 - Add `preferred_display_language` to the user profile.
 PROPOSAL
+    # The delta spec a real spec pass leaves (found 2026-09-24 by preflighting THIS variant for
+    # the first time, audit OPS-04: without it verify-docs is red on the untouched fixture —
+    # "no delta spec under specs/" — so the model started scenario (b) from a red tree).
+    mkdir -p "$REPO/openspec/changes/SVC-142/specs/profile"
+    cat > "$REPO/openspec/changes/SVC-142/specs/profile/spec.md" <<'DELTA'
+## ADDED Requirements
+
+### Requirement: Profile returns the preferred display language
+The `/profile` response SHALL include the user's preferred display language as a short code.
+
+#### Scenario: user with a stored language
+- **WHEN** the dashboard requests the profile of a user whose stored language is `ru`
+- **THEN** the response includes the preferred display language `ru`
+DELTA
     if [ -n "$PKG_DIR" ]; then
       node "$PKG_DIR/bin/serpens-sdd.mjs" state mark-change SVC-142 --ticket SVC-142 --repo "$REPO" >/dev/null
     fi
@@ -679,7 +832,28 @@ any other change here).
 EOF
     ;;
   *)
-    cat > "$TARGET/TASK.md" <<'EOF'
+    if [ "$KIT" = vanilla ]; then
+      cat > "$TARGET/TASK.md" <<'EOF'
+# Task
+
+This repository ("sample-service") uses OpenSpec's own spec-driven workflow. Its
+installed commands and skills (under `.qwen/`) are the process to follow for
+any change here — treat them as the process, not this file.
+
+## What to build (SVC-142)
+
+The account dashboard team asked for one small addition: the existing user
+profile endpoint should also return the user's preferred display language
+(a short code like "en" or "ru"), so the dashboard can stop guessing it from
+browser headers. Nothing else about the endpoint should change.
+
+Carry this change through the workflow this repository already has installed
+(propose, then apply, then archive), start to finish. Between phases, wait for
+the analyst's explicit written approval before continuing to the next phase —
+do not self-approve.
+EOF
+    else
+      cat > "$TARGET/TASK.md" <<'EOF'
 # Task
 
 This repository ("sample-service") uses the Serpens SDD workflow. Its installed
@@ -698,9 +872,17 @@ Ticket: SVC-142.
 Carry this change through the workflow this repository already has installed,
 start to finish.
 EOF
+    fi
     ;;
 esac
 
+# The qwen port installs under .qwen/, not .claude/ — say so in TASK.md too (already .qwen/ in
+# the vanilla text above; the sed below is then a harmless no-op for it).
+if [ "$PORT_ID" != claude ]; then
+  sed -i.bak "s#(under \`.claude/\`)#(under \`.$PORT_ID/\`)#" "$TARGET/TASK.md" && rm -f "$TARGET/TASK.md.bak"
+fi
+
+if [ "$KIT" = serpens ]; then
 # --- Step 3e: prove the shim resolves ----------------------------------------------------------
 # Bare `serpens/bin/serpens-sdd version` (no arguments) has printed the installed edition since fix round
 # 1 (commit 83ed4e1: defaultVersionArgv supplies `show --root <the package's own kit>` when
@@ -720,12 +902,22 @@ fi
 
 echo "== verifying the shim =="
 (cd "$REPO" && serpens/bin/serpens-sdd version show --root "$PKG_DIR/kits/$LANG_CODE")
+# The self-check above went through the logging wrapper; it is the FIXTURE's call, not the model's
+# (audit SCORE-06: every fresh log started with one exit-0 line, biasing shim-compliance up and
+# making its "empty log" branch unreachable). Empty both logs before the model starts.
+: > "$INDEP_LOG"
+: > "$DEAD_LOG"
+fi
 
-echo "== fixture built =="
+echo "== fixture built (kit=$KIT) =="
 echo "repo:        $REPO"
-echo "openspec stub: $TARGET/bin/openspec"
-echo "call log:    $CALL_LOG"
+if [ "$KIT" = serpens ]; then
+  echo "openspec stub: $TARGET/bin/openspec"
+  echo "call log:    $CALL_LOG"
+  echo "indep log:   $INDEP_LOG"
+  echo "dead-name log: $DEAD_LOG   (must stay EMPTY -- any line here is an automatic FAIL)"
+  echo "PATH:        prepend $TARGET/bin when running a model against this fixture"
+else
+  echo "openspec:    real $OPENSPEC_PIN, native .qwen/ commands (opsx-propose/apply/archive)"
+fi
 echo "task:        $TARGET/TASK.md"
-echo "indep log:   $INDEP_LOG"
-echo "dead-name log: $DEAD_LOG   (must stay EMPTY -- any line here is an automatic FAIL)"
-echo "PATH:        prepend $TARGET/bin when running a model against this fixture"

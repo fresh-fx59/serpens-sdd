@@ -16,7 +16,7 @@ node --version       # >= 18, runs the .mjs disposers
 lefthook version     # install through the approved internal channel first
 ```
 
-- `@fresh-fx59/serpens-sdd` is installed and `serpens-sdd version` prints edition `2026-09-25.1`.
+- `@fresh-fx59/serpens-sdd` is installed and `serpens-sdd version` prints edition `2026-10-01.1`.
   Node >= 18. Nothing in this procedure copies a script into a repository.
 
 The OpenSpec CLI is pinned and internal. The package is `@fission-ai/openspec`;
@@ -313,10 +313,9 @@ For each path reported by `.gitmodules`:
    fill it in with the team. FIVE sections, all required: the fast and slow tiers with the
    command that runs each, the wiring boundaries only the slow tier catches, the debugging
    boundary order, and `Manual testing access` — the twelve slots naming what a tester can
-   send, produce, query and observe from outside. `spns-tdd`, `spns-debugging`,
-   `spns-test-plan` and `spns-autotest` name no framework, transport, store or query language
-   of their own; they read this file, so an unanswered one leaves four commands with nothing
-   to work from. `<serpens-sdd> verify-docs` fails while any section is missing or any slot
+   send, produce, query and observe from outside. `spns-tdd`, `spns-debugging` and
+   `spns-test-plan` name no framework, transport, store or query language of their own; they
+   read this file, so an unanswered one leaves three commands with nothing to work from. `<serpens-sdd> verify-docs` fails while any section is missing or any slot
    unanswered, and names each one. Where a slot offers `none`, `none` is a COMPLETE answer —
    "this repository has no such surface" — and it is not the same as leaving the slot blank.
    An answer that is the same across the whole estate belongs in ONE document: name it in the

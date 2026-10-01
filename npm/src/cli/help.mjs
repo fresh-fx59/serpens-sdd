@@ -10,7 +10,6 @@ const WORKFLOW_COMMANDS = [
   'spns-spec',
   'spns-plan',
   'spns-implement',
-  'spns-autotest',
   'spns-test-plan',
   'spns-review',
   'spns-archive',

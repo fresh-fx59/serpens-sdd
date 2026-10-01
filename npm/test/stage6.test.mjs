@@ -76,12 +76,52 @@ test('commands land in the port layout with the right names for a flat-prefixed 
   // so user scope wins.
   const commandDir = join(ctx.home, '.gigacode', 'commands');
   const expected = [
-    'spns-archive.md', 'spns-autotest.md', 'spns-implement.md', 'spns-plan.md',
+    'spns-archive.md', 'spns-implement.md', 'spns-plan.md',
     'spns-review.md', 'spns-spec.md', 'spns-test-plan.md',
   ];
   const actual = readdirSync(commandDir).sort();
   assert.deepEqual(actual, expected.sort());
-  assert.equal(actual.length, 7);
+  assert.equal(actual.length, 6);
+});
+
+test('upgrade archives an owned retired flat command without touching custom commands', async () => {
+  const port = loadPort({ id: 'gigacode' });
+  const ctx = baseCtx({ port });
+  assert.equal((await installCommands(ctx)).ok, true);
+  const commandDir = join(ctx.home, '.gigacode', 'commands');
+  writeFileSync(join(commandDir, 'spns-autotest.md'), '---\nserpens-version: 2026-09-25.1\n---\noperator edits\n', 'utf8');
+  writeFileSync(join(commandDir, 'custom.md'), 'keep me\n', 'utf8');
+  writeFileSync(join(commandDir, 'opsx-apply.md'), '---\nserpens-version: 2026-09-25.1\n---\nOpenSpec\n', 'utf8');
+  writeFileSync(join(commandDir, 'spns-custom.md'), 'body mentions serpens-version: 2026-09-25.1\n', 'utf8');
+  assert.equal((await installCommands(ctx)).ok, true);
+  assert.equal(existsSync(join(commandDir, 'spns-autotest.md')), false);
+  assert.equal(readFileSync(join(commandDir, 'custom.md'), 'utf8'), 'keep me\n');
+  assert.equal(existsSync(join(commandDir, 'opsx-apply.md')), true);
+  assert.equal(existsSync(join(commandDir, 'spns-custom.md')), true);
+  const backups = readdirSync(join(ctx.home, '.gigacode', '.serpens-retired-commands'));
+  assert.equal(backups.length, 1);
+  assert.match(readFileSync(join(ctx.home, '.gigacode', '.serpens-retired-commands', backups[0], 'spns-autotest.md'), 'utf8'), /operator edits/);
+});
+
+test('upgrade archives retired subdir commands in the store and every spoke', async () => {
+  const port = loadPort({ id: 'claude' });
+  const ctx = baseCtx({ port, submodules: ['svc-a'] });
+  assert.equal((await installCommands(ctx)).ok, true);
+  for (const root of [ctx.storeRoot, join(ctx.storeRoot, 'submodules', 'svc-a')]) {
+    const agentRoot = join(root, '.claude');
+    const commandDir = join(agentRoot, 'commands', 'spns');
+    writeFileSync(join(commandDir, 'autotest.md'), `---\nserpens-version: 2026-09-25.1\n---\nedited ${root}\n`, 'utf8');
+    writeFileSync(join(commandDir, 'custom.md'), 'body mentions serpens-version: 2026-09-25.1\n', 'utf8');
+  }
+  assert.equal((await installCommands(ctx)).ok, true);
+  for (const root of [ctx.storeRoot, join(ctx.storeRoot, 'submodules', 'svc-a')]) {
+    const agentRoot = join(root, '.claude');
+    assert.equal(existsSync(join(agentRoot, 'commands', 'spns', 'autotest.md')), false);
+    const backups = readdirSync(join(agentRoot, '.serpens-retired-commands'));
+    assert.equal(backups.length, 1);
+    assert.equal(readFileSync(join(agentRoot, '.serpens-retired-commands', backups[0], 'spns/autotest.md'), 'utf8'), `---\nserpens-version: 2026-09-25.1\n---\nedited ${root}\n`);
+    assert.equal(existsSync(join(agentRoot, 'commands', 'spns', 'custom.md')), true);
+  }
 });
 
 test('a project-scope port installs into the store AND every onboarded submodule, never the cwd', async () => {
@@ -92,7 +132,7 @@ test('a project-scope port installs into the store AND every onboarded submodule
 
   // claude: scope_preference [project] only -> spec §5.4's "<repo>/<agent_dir> in the store and
   // in every onboarded submodule".
-  const expected = ['archive.md', 'autotest.md', 'implement.md', 'plan.md', 'review.md', 'spec.md', 'test-plan.md'].sort();
+  const expected = ['archive.md', 'implement.md', 'plan.md', 'review.md', 'spec.md', 'test-plan.md'].sort();
   for (const root of [ctx.storeRoot, join(ctx.storeRoot, 'submodules', 'svc-a'), join(ctx.storeRoot, 'submodules', 'svc-b')]) {
     const subdir = join(root, '.claude', 'commands', 'spns');
     assert.ok(existsSync(join(subdir, 'spec.md')), `expected .claude/commands/spns/spec.md in ${root}`);

@@ -1,6 +1,6 @@
 import { LAYOUT } from './layout.mjs';
-// `serpens/testing-stack.md` — the one per-repository facts file. Two commands and two skills read
-// it (`spns-test-plan`, `spns-autotest`, `spns-tdd`, `spns-debugging`), so it is the layer that
+// `serpens/testing-stack.md` — the one per-repository facts file. One command and two skills read
+// it (`spns-test-plan`, `spns-tdd`, `spns-debugging`), so it is the layer that
 // lets the kit ship without naming a single technology, protocol or query language a CUSTOMER
 // chose.
 //
@@ -49,7 +49,7 @@ export const REQUIRED_SECTIONS = [
   { key: 'slow-tier', reads: 'spns-tdd', kind: 'tier' },
   { key: 'wiring-bugs', reads: 'spns-tdd', kind: 'prose' },
   { key: 'debugging-order', reads: 'spns-debugging', kind: 'prose' },
-  { key: 'manual-access', reads: 'spns-test-plan, spns-autotest', kind: 'slots' },
+  { key: 'manual-access', reads: 'spns-test-plan', kind: 'slots' },
 ];
 
 /**

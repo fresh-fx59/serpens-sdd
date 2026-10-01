@@ -1,6 +1,6 @@
 # Testing stack — <repository or project name> (recorded YYYY-MM-DD)
 
-Everything `spns-tdd`, `spns-debugging`, `spns-test-plan` and `spns-autotest` need to know about
+Everything `spns-tdd`, `spns-debugging` and `spns-test-plan` need to know about
 THIS repository. None of those name a framework, a store or a transport of their own — they read
 this file. Fill it in once per repository, from what the build and the dev stand actually do, not
 from what the team intends to use. Real commands, real names: an entry nobody can run is worse

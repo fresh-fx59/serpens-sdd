@@ -1,6 +1,6 @@
 ---
 description: Post-merge close-out — fold the delta into living specs, ADR, index (dev flow)
-serpens-version: 2026-09-25.1
+serpens-version: 2026-10-01.1
 ---
 Archive change {{args}}. Follow skill spns-verification (evidence for every step below).
 `{{args}}` is `<change-id> [--here | --branch <name>]`. The flag chooses WHERE the archive
@@ -19,7 +19,8 @@ invocation setup resolved.
    from the same contract). Verify it with `<serpens-sdd> state assert-archivable --change
    <change-id>` — never by reading the forge UI, the tracker, or a change-request link; "merged"
    is judged ONLY by this command's exit code. Always pass `--change <change-id>` (the same
-   `<change-id>` from `{{args}}`): the hand-off tip this checks is recorded per CHANGE, never per
+   `<change-id>` from `{{args}}`; the ticket id also works and resolves to the one marked change
+   with that ticket): the hand-off tip this checks is recorded per CHANGE, never per
    branch — the story branch that had the hand-off is usually deleted by the time you archive,
    and you may be standing on any branch right now (often the integration branch itself). Run it
    ONCE, right here, on whatever branch you are on now — BEFORE you create or switch to any other

@@ -455,6 +455,61 @@ dc_change_for_ticket() {
   printf '%s\n' "$found"
 }
 
+# All marked change-ids under openspec/changes/ whose ticket == $2, one per line (root $1).
+# Used both by dc_change_for_ticket (below, unchanged) and by dc_resolve_change_arg's ambiguity
+# reporting, which needs every candidate, not just "more than one" (bug fix, eval round 2,
+# PET-7 petclinic runs — see dc_resolve_change_arg).
+dc_changes_for_ticket() {
+  local root="$1" ticket="$2" changes_dir dir marker t
+  changes_dir="$root/openspec/changes"
+  [ -d "$changes_dir" ] || return 0
+  for dir in "$changes_dir"/*/; do
+    [ -d "$dir" ] || continue
+    marker="${dir}.serpens.yaml"
+    [ -f "$marker" ] || continue
+    t="$(grep -E '^ticket: ' "$marker" 2>/dev/null | head -1 | sed 's/^ticket: //')"
+    [ "$t" = "$ticket" ] || continue
+    printf '%s\n' "$(basename "${dir%/}")"
+  done
+}
+
+# Resolves a --change argument that may be a marked change-id OR a ticket id (bug fix, eval
+# round 2, PET-7 petclinic runs: agents naturally pass the ticket, e.g. `PET-7`/`svc-142`, to
+# `--change`). Never keys anything by branch — only ever change-id or ticket, per the existing
+# contract (§2b item 3).
+#
+# On success (return 0): DC_RESOLVED_CHANGE_ID is the change-id to use; DC_RESOLVE_FROM_TICKET is
+# 1 when $arg had to be resolved from a ticket (caller should print one line saying so), 0 when
+# $arg already WAS the change-id.
+# On failure (return 1): DC_RESOLVE_CANDIDATES holds the newline-separated change-ids that matched
+# $arg as a ticket (empty when none did), for the caller's own hint — never guessed between them.
+DC_RESOLVED_CHANGE_ID=""
+DC_RESOLVE_FROM_TICKET=0
+DC_RESOLVE_CANDIDATES=""
+dc_resolve_change_arg() {
+  local root="$1" arg="$2" n exact
+  DC_RESOLVED_CHANGE_ID=""
+  DC_RESOLVE_FROM_TICKET=0
+  DC_RESOLVE_CANDIDATES=""
+  # `find -name` matches case-sensitively even on a case-insensitive filesystem (macOS default) —
+  # a plain `[ -f "$root/openspec/changes/$arg/.serpens.yaml" ]` would silently accept `FRG-3` for
+  # a change-id directory actually named `frg-3` there, and every later lookup keyed by the exact
+  # string `$arg` (dc_latest_handoff_tip et al.) would then miss.
+  exact="$(find "$root/openspec/changes" -mindepth 1 -maxdepth 1 -type d -name "$arg" 2>/dev/null | head -1)"
+  if [ -n "$exact" ] && [ -f "$exact/.serpens.yaml" ]; then
+    DC_RESOLVED_CHANGE_ID="$arg"
+    return 0
+  fi
+  DC_RESOLVE_CANDIDATES="$(dc_changes_for_ticket "$root" "$arg")"
+  n=$(printf '%s\n' "$DC_RESOLVE_CANDIDATES" | grep -c . || true)
+  if [ "$n" -eq 1 ]; then
+    DC_RESOLVED_CHANGE_ID="$DC_RESOLVE_CANDIDATES"
+    DC_RESOLVE_FROM_TICKET=1
+    return 0
+  fi
+  return 1
+}
+
 dc_record_archive_when_confirm() {
   local root="$1" value="$2" path tmp
   path="$(dc_estate_path "$root")"

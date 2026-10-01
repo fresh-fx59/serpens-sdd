@@ -101,7 +101,40 @@ export function defaultVersionArgv(argv) {
 }
 
 /**
+ * Whether `argv` asks the wrapped script to read rows from stdin (`--repos-from -`, the one
+ * stdin-reading convention any vendored tool script currently uses — see `tools/sync-submodules.sh`).
+ * Internal callers (stage 4, stage 9) never go through this function: they call `resolveTool` +
+ * `run` directly and hand `input` themselves. This check exists ONLY for the public CLI path
+ * (`runTool`, below), so a user piping rows into `serpens-sdd sync-submodules --repos-from -`
+ * gets them forwarded instead of silently reconciling zero rows.
+ * @param {string[]} argv
+ * @returns {boolean}
+ */
+export function wantsStdinRows(argv) {
+  const i = argv.indexOf('--repos-from');
+  return i !== -1 && argv[i + 1] === '-';
+}
+
+/**
+ * Read the CLI process's own stdin to EOF and return it as a utf8 string.
+ * @returns {Promise<string>}
+ */
+async function readAllStdin() {
+  process.stdin.setEncoding('utf8');
+  let text = '';
+  for await (const chunk of process.stdin) text += chunk;
+  return text;
+}
+
+/**
  * Run a tool subcommand, forwarding the child's exit code unchanged.
+ *
+ * `run()` (src/run.mjs) always closes the CHILD's stdin — with `input` written first when
+ * given, otherwise immediately — so a stdin-reading child can never hang the run forever. That
+ * means whoever calls `run()` is responsible for actually reading the PARENT's stdin when the
+ * user asked for it: `--repos-from -` is the one public case (see `wantsStdinRows` above).
+ * Piped/redirected stdin (not a TTY) is read to EOF and forwarded; a TTY — nothing piped — fails
+ * fast with a clear message instead of `run()` silently reconciling against zero rows.
  * @param {string} name - a TOOL_COMMANDS key
  * @param {string[]} argv - arguments to forward verbatim
  * @returns {Promise<number>}
@@ -110,7 +143,28 @@ export async function runTool(name, argv) {
   const effectiveArgv = name === 'version' ? defaultVersionArgv(argv) : argv;
   const { cmd, args } = resolveTool(name, effectiveArgv);
   const cwd = findGitRoot(process.cwd());
-  const result = await run(cmd, args, { cwd });
+
+  let input;
+  if (wantsStdinRows(effectiveArgv)) {
+    if (process.stdin.isTTY) {
+      process.stderr.write(
+        `✗ --repos-from - needs rows on stdin; pipe them or use --inventory <file>\n`,
+      );
+      return 2;
+    }
+    input = await readAllStdin();
+    // Also catches `< /dev/null` and a closed/empty pipe — nothing piped is nothing piped,
+    // whether or not stdin happened to be a TTY: don't let `run()`'s always-closed-stdin
+    // silently reconcile against zero rows.
+    if (input.trim() === '') {
+      process.stderr.write(
+        `✗ --repos-from - needs rows on stdin; pipe them or use --inventory <file>\n`,
+      );
+      return 2;
+    }
+  }
+
+  const result = await run(cmd, args, { cwd, ...(input !== undefined ? { input } : {}) });
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.stderr) process.stderr.write(result.stderr);
   return result.code;
